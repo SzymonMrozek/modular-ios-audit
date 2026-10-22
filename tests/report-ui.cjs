@@ -72,7 +72,7 @@ fs.mkdirSync(outputs, { recursive: true });
     await page.locator('[data-reset]').click();
     await page.locator('[data-module-scope]').selectOption(['Modules/PhotoEditor']);
     await page.locator('[data-apply-scope]').click();
-    assert.match(await page.locator('.score-overall').innerText(), /63\/64 modules/);
+    assert.match(await page.locator('.score-overall').innerText(), /64\/65 modules/);
     await page.locator('[data-reset]').click();
     await page.goto(url + '#p2-f1-fix');
     await page.waitForFunction(() => document.getElementById('p2-f1').open && document.querySelector('#p2>.minor-issues').open);

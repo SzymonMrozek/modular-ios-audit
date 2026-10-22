@@ -75,7 +75,7 @@ def snapshot(result, titles):
              f'{result["total"]}/{result["inventory_total"]} modules in scope', 'Weighted by code mass' if result['weighting'] == 'code-mass' else 'Equal module weights',
              f'Systemic candidates {systemic["candidates"] - len(systemic["unresolved"])}/{systemic["candidates"]} resolved' if systemic['screened'] else 'Systemic screen missing']
     structure = result.get('structure')
-    structure_row = '' if not structure else '<div class="score-overall score-structure">' + ''.join(f'<span>{html.escape(label)}</span>' for label in (
+    structure_row = '' if not structure else '<div class="score-structure">' + ''.join(f'<span>{html.escape(label)}</span>' for label in (
         f'Effective modules {structure["effective_modules"]}', f'Largest {structure["largest_module"]} {structure["largest_share"] * 100:.0f}%',
         f'Change reaches {structure["mass_propagation_cost"] * 100:.0f}% of code', f'Cycles {structure["cycles"]}')) + '</div>'
     top = [r for r in result['ranking'] if r['open']][:5]

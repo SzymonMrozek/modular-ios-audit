@@ -152,7 +152,7 @@
       if (result.risk.assessed_mass_min !== null) text(facts, 'span', `Assessed mass ≥ ${(result.risk.assessed_mass_min * 100).toFixed(0)}%`);
       text(facts, 'span', result.systemic.screened ? `Systemic candidates ${result.systemic.candidates - result.systemic.unresolved.length}/${result.systemic.candidates} resolved` : 'Systemic screen missing');
       const st = result.structure;
-      if (st) { const structure = text(scores, 'div', '', 'score-overall score-structure'); for (const label of [`Effective modules ${st.effective_modules}`, `Largest ${st.largest_module} ${(st.largest_share * 100).toFixed(0)}%`, `Change reaches ${(st.mass_propagation_cost * 100).toFixed(0)}% of code`, `Cycles ${st.cycles}`]) text(structure, 'span', label); }
+      if (st) { const structure = text(scores, 'div', '', 'score-structure'); for (const label of [`Effective modules ${st.effective_modules}`, `Largest ${st.largest_module} ${(st.largest_share * 100).toFixed(0)}%`, `Change reaches ${(st.mass_propagation_cost * 100).toFixed(0)}% of code`, `Cycles ${st.cycles}`]) text(structure, 'span', label); }
       const top = result.ranking.filter(r => r.open).slice(0, 5);
       if (top.length) {
         const list = text(scores, 'ol', '', 'top-problems'); list.setAttribute('aria-label', 'Top problems by impact');
