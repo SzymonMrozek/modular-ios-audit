@@ -8,9 +8,27 @@ Eight principles. Evidence-backed findings. A compact, interactive HTML report.
 
 ## Install
 
+### Skills CLI (recommended)
+
+Use [Vercel's Skills CLI](https://github.com/vercel-labs/skills) with Node.js **22.20+**. Run from the project where you want the skill:
+
+```sh
+npx skills add SzymonMrozek/modular-ios-audit
+```
+
+Choose your agents interactively, or target Claude Code and Codex together:
+
+```sh
+npx skills add SzymonMrozek/modular-ios-audit --agent claude-code codex
+```
+
+Add `--global` to install across projects. Invoke `/modular-ios-audit` in Claude Code or `$modular-ios-audit` in Codex. The installer includes the bundled scripts, references and report assets; install Python dependencies separately as described below.
+
+### Manual installation
+
 Install the **whole repository**, including `scripts/`, `references/`, and `assets/`.
 
-### Codex
+#### Codex
 
 ```sh
 git clone https://github.com/SzymonMrozek/modular-ios-audit.git ~/.agents/skills/modular-ios-audit
@@ -18,7 +36,7 @@ git clone https://github.com/SzymonMrozek/modular-ios-audit.git ~/.agents/skills
 
 Invoke `$modular-ios-audit`, or ask for a modular architecture audit. Start a new agent session after installing if it is not discovered immediately.
 
-### Claude Code
+#### Claude Code
 
 ```sh
 git clone https://github.com/SzymonMrozek/modular-ios-audit.git ~/.claude/skills/modular-ios-audit
@@ -69,14 +87,14 @@ These scores are an explicit review policy, not an industry benchmark or a proba
 
 - A coding agent with repository read access and shell tools.
 - Python **3.10+**. Scoring and report preparation use the standard library.
-- [Pygments](https://pygments.org/) for generating highlighted diffs. Use an isolated environment:
+- [Pygments](https://pygments.org/) for generating highlighted diffs. Use an isolated environment in your project:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install "Pygments>=2.19,<3"
 ```
 
-On Windows, use `.venv\Scripts\python.exe`. Browser automation, Node.js and Playwright are development-test tools, not audit/runtime requirements. A full independent audit also needs the host's subagent capability. Builds or negative probes depend on the audited repository's tools and permissions.
+On Windows, use `.venv\Scripts\python.exe`. Node.js is needed for the optional Skills CLI installer and development tests; browser automation and Playwright are development-test tools. None is an audit/runtime requirement. A full independent audit also needs the host's subagent capability. Builds or negative probes depend on the audited repository's tools and permissions.
 
 ## Try the synthetic report
 
