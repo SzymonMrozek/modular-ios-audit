@@ -86,6 +86,18 @@ class StructureScanTests(unittest.TestCase):
         concerns = {c['metrics']['concern'] for c in result['candidates'] if c['archetype'] == 'parallel-abstractions'}
         self.assertEqual(concerns, {'images', 'networking'})
 
+    def test_feature_importing_implementations_is_not_a_composition_root(self):
+        with tempfile.TemporaryDirectory() as root:
+            messy_repo(root)
+            for name in ['Orders', 'Basket', 'Wallet', 'Promo']:
+                write(root, f'{name}/Interface/Sources/{name}.swift', [], lines(name + 'Contract', 3))
+                write(root, f'{name}/Implementation/Sources/{name}.swift', [f'{name}Interface'], lines(name + 'Live', 3))
+            write(root, 'Checkout/Sources/Checkout.swift', [f'{n}Implementation' for n in ['Orders', 'Basket', 'Wallet', 'Promo']], lines('Checkout', 400))
+            write(root, 'App/Checkout.swift', ['Checkout'], lines('Entry', 2))
+            result = scan(root)
+        self.assertEqual(result['modules']['Checkout']['kind'], 'library')
+        self.assertEqual(len(result['modules']['Checkout']['implementation_imports']), 4)
+
     def test_module_map_overrides_discovery(self):
         with tempfile.TemporaryDirectory() as root:
             clean_repo(root)
@@ -93,6 +105,7 @@ class StructureScanTests(unittest.TestCase):
                                    'App': {'kind': 'app', 'import_names': [], 'sources': ['App']}}}
             result = scan(root, mapping)
         self.assertEqual(set(result['modules']), {'App', 'Everything'})
+        self.assertEqual(result['modules']['Everything']['kind'], 'library')
         self.assertEqual(result['module_source'], 'map')
 
 

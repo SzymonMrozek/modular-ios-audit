@@ -363,11 +363,14 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
     propagation = sum(len(dependents[m]) + 1 for m in ids) / (n * n) if n else 0
     mass_propagation = sum(unit_mass[u] * sum(unit_mass[d] for d in unit_dependents[u] | {u}) for u in units)
     cycles = sccs(units, unit_deps)
-    for m in ids:
+    # A module map's kinds are authoritative. Discovery infers hosts: an app has an entry point and no consumers; a
+    # composition root is small wiring that only apps import. A sizeable feature importing many implementations is
+    # the defect under audit, not a composition root.
+    for m in ids if not mapping else ():
         kind = modules[m].get('kind', 'library')
         if per[m]['app_marker'] and not consumers[m] and kind in ('library', 'unowned'):
             kind = 'app'
-        elif kind == 'library' and len(per[m]['impl_imports']) >= 4:
+        elif kind == 'library' and len(per[m]['impl_imports']) >= 4 and mass[m] < .05 and all(per[c]['app_marker'] for c in consumers[m]):
             kind = 'composition'
         modules[m] = {**modules[m], 'kind': kind}
 
