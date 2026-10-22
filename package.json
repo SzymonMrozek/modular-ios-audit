@@ -1,0 +1,11 @@
+{
+  "name": "modular-ios-audit-tests",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "test:ui": "node tests/report-ui.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}

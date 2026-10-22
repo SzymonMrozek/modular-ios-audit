@@ -1,0 +1,120 @@
+# Modular iOS Audit
+
+An architecture audit skill for **Claude Code**, **Codex**, and agents supporting the [Agent Skills standard](https://agentskills.io/specification).
+
+Eight principles. Evidence-backed findings. A compact, interactive HTML report.
+
+![Synthetic report preview](docs/report-overview.png)
+
+## Install
+
+Install the **whole repository**, including `scripts/`, `references/`, and `assets/`.
+
+### Codex
+
+```sh
+git clone https://github.com/SzymonMrozek/modular-ios-audit.git ~/.agents/skills/modular-ios-audit
+```
+
+Invoke `$modular-ios-audit`, or ask for a modular architecture audit. Start a new agent session after installing if it is not discovered immediately.
+
+### Claude Code
+
+```sh
+git clone https://github.com/SzymonMrozek/modular-ios-audit.git ~/.claude/skills/modular-ios-audit
+```
+
+Invoke `/modular-ios-audit`.
+
+For a shared installation, install once for Codex, then link Claude Code to that folder:
+
+```sh
+mkdir -p ~/.claude/skills
+ln -s ~/.agents/skills/modular-ios-audit ~/.claude/skills/modular-ios-audit
+```
+
+These commands intentionally do not replace an existing installation. For an existing clone, update it with `git -C <installation-path> pull --ff-only` after preserving any local edits.
+
+For repository-scoped use, place the skill under `.agents/skills/modular-ios-audit/` for Codex or `.claude/skills/modular-ios-audit/` for Claude Code. The same skill files serve both agents; `agents/openai.yaml` is optional Codex display metadata.
+
+## Use
+
+```text
+Audit the latest local main against all eight principles.
+Ignore the modules I explicitly list and keep the audit read-only.
+```
+
+```text
+Audit P2 and P3 only. Use the current working tree, including local changes.
+```
+
+The agent identifies the actual module system, freezes a module inventory/import graph, and delegates one independent evaluator per selected principle. No particular DI library, app architecture, project generator, build runner, MCP server, or review tool is required. If the host cannot delegate, the skill discloses that limitation and offers a labelled single-agent alternative.
+
+The audit does not change application code. It distinguishes inspected facts, structural risks, suggestions, unknown checks and unverified proposed code.
+
+## Report
+
+- Overall average risk with **LOW / MEDIUM / HIGH**; no overall pass/fail gate.
+- Separate defect-owner (**root cost**) and unique direct-consumer (**affected**) counts.
+- Individual principle scores, consequence weighting, coverage and check evidence.
+- Compact findings below 2%, readable principle pages and direct issue/fix/evidence links.
+- Swift and other iOS language syntax highlighting in git-style diffs.
+- Reason-free **Resolved / Invalid for this repo / Acceptable for this project** checkboxes.
+- Immediate recalculation, local persistence, export/import/reset and module exclusions.
+- Self-contained HTML, local file URL and default external-browser opening.
+
+These scores are an explicit review policy, not an industry benchmark or a probability of failure. See [scoring policy](references/scoring.md). A public primitive or missing wrapper alone does not establish a defect.
+
+## Requirements
+
+- A coding agent with repository read access and shell tools.
+- Python **3.10+**. Scoring and report preparation use the standard library.
+- [Pygments](https://pygments.org/) for generating highlighted diffs. Use an isolated environment:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+On Windows, use `.venv\Scripts\python.exe`. Browser automation, Node.js and Playwright are development-test tools, not audit/runtime requirements. A full independent audit also needs the host's subagent capability. Builds or negative probes depend on the audited repository's tools and permissions.
+
+## Try the synthetic report
+
+The bundled template is a working example containing **synthetic data**, not an audit of any real repository. From this checkout:
+
+```sh
+python3 scripts/prepare_report.py tests/fixtures/audit.json assets/report-template.html --output /tmp/modular-audit-preview.html
+```
+
+The command prints a local `file://` URL and requests the default external browser. Choose another output path on systems without `/tmp`; add `--no-open` for automated runs. For a real audit, the agent populates the template with verified findings and passes the matching canonical audit JSON to the same helper.
+
+Do not generate reports inside the installed skill. Changes made only in a browser remain local until exported; an agent can apply the export with:
+
+```sh
+python3 scripts/score_audit.py audit-data.json --decisions audit-decisions.json --output scores.json
+```
+
+## Development
+
+```sh
+python3 -m unittest discover -s scripts -p 'test_*.py'
+npm ci
+npx playwright install chromium
+npm run test:ui
+```
+
+Python tests cover arithmetic, exact thresholds, scope, decisions, source escaping and browser/Python parity when Node is available. Browser tests cover the synthetic report, navigation, compact findings, checkboxes, persistence, export/import, static fallback and desktop/mobile layout.
+
+Release smoke checks loaded this package in Claude Code 2.1.299 and Codex CLI 0.145.0 and verified its scoring, review controls and runtime contract. These checks validate skill loading; they do not replace an end-to-end audit of a repository.
+
+The report template embeds the maintained CSS/JavaScript so it also works when opened directly. After editing an asset, refresh the embedded example:
+
+```sh
+python3 scripts/prepare_report.py tests/fixtures/audit.json assets/report-template.html --no-open
+```
+
+## Principles and license
+
+The eight rubrics follow [Modular iOS Architecture for Agentic Coding](https://mrozek.dev/posts/modular-ios-architecture-for-agentic-coding), with correction and evidence requirements developed for this skill. Examples are illustrative; findings must come from the repository being audited.
+
+[MIT](LICENSE). Independent of the applications and tools where it is used.

@@ -1,0 +1,503 @@
+{
+  "modules": [
+    "Modules/EditorFeature",
+    "Modules/PhotoEditor",
+    "Modules/VideoEditor",
+    "Modules/Feature04",
+    "Modules/Feature05",
+    "Modules/Feature06",
+    "Modules/Feature07",
+    "Modules/Feature08",
+    "Modules/Feature09",
+    "Modules/Feature10",
+    "Modules/Feature11",
+    "Modules/Feature12",
+    "Modules/Feature13",
+    "Modules/Feature14",
+    "Modules/Feature15",
+    "Modules/Feature16",
+    "Modules/Feature17",
+    "Modules/Feature18",
+    "Modules/Feature19",
+    "Modules/Feature20",
+    "Modules/Feature21",
+    "Modules/Feature22",
+    "Modules/Feature23",
+    "Modules/Feature24",
+    "Modules/Feature25",
+    "Modules/Feature26",
+    "Modules/Feature27",
+    "Modules/Feature28",
+    "Modules/Feature29",
+    "Modules/Feature30",
+    "Modules/Feature31",
+    "Modules/Feature32",
+    "Modules/Feature33",
+    "Modules/Feature34",
+    "Modules/Feature35",
+    "Modules/Feature36",
+    "Modules/Feature37",
+    "Modules/Feature38",
+    "Modules/Feature39",
+    "Modules/Feature40",
+    "Modules/Feature41",
+    "Modules/Feature42",
+    "Modules/Feature43",
+    "Modules/Feature44",
+    "Modules/Feature45",
+    "Modules/Feature46",
+    "Modules/Feature47",
+    "Modules/Feature48",
+    "Modules/Feature49",
+    "Modules/Feature50",
+    "Modules/Feature51",
+    "Modules/Feature52",
+    "Modules/Feature53",
+    "Modules/Feature54",
+    "Modules/Feature55",
+    "Modules/Feature56",
+    "Modules/Feature57",
+    "Modules/Feature58",
+    "Modules/Feature59",
+    "Modules/Feature60",
+    "Modules/Feature61",
+    "Modules/Feature62",
+    "Modules/Feature63",
+    "Modules/Feature64"
+  ],
+  "consumer_graph_complete": true,
+  "consumer_graph_provenance": {
+    "source": "Illustrative data; not a repository audit"
+  },
+  "consumers": {
+    "Modules/EditorFeature": [
+      "Modules/PhotoEditor",
+      "Modules/VideoEditor"
+    ],
+    "Modules/PhotoEditor": [],
+    "Modules/VideoEditor": [],
+    "Modules/Feature04": [],
+    "Modules/Feature05": [],
+    "Modules/Feature06": [],
+    "Modules/Feature07": [],
+    "Modules/Feature08": [],
+    "Modules/Feature09": [],
+    "Modules/Feature10": [],
+    "Modules/Feature11": [],
+    "Modules/Feature12": [],
+    "Modules/Feature13": [],
+    "Modules/Feature14": [],
+    "Modules/Feature15": [],
+    "Modules/Feature16": [],
+    "Modules/Feature17": [],
+    "Modules/Feature18": [],
+    "Modules/Feature19": [],
+    "Modules/Feature20": [],
+    "Modules/Feature21": [],
+    "Modules/Feature22": [],
+    "Modules/Feature23": [],
+    "Modules/Feature24": [],
+    "Modules/Feature25": [],
+    "Modules/Feature26": [],
+    "Modules/Feature27": [],
+    "Modules/Feature28": [],
+    "Modules/Feature29": [],
+    "Modules/Feature30": [],
+    "Modules/Feature31": [],
+    "Modules/Feature32": [],
+    "Modules/Feature33": [],
+    "Modules/Feature34": [],
+    "Modules/Feature35": [],
+    "Modules/Feature36": [],
+    "Modules/Feature37": [],
+    "Modules/Feature38": [],
+    "Modules/Feature39": [],
+    "Modules/Feature40": [],
+    "Modules/Feature41": [],
+    "Modules/Feature42": [],
+    "Modules/Feature43": [],
+    "Modules/Feature44": [],
+    "Modules/Feature45": [],
+    "Modules/Feature46": [],
+    "Modules/Feature47": [],
+    "Modules/Feature48": [],
+    "Modules/Feature49": [],
+    "Modules/Feature50": [],
+    "Modules/Feature51": [],
+    "Modules/Feature52": [],
+    "Modules/Feature53": [],
+    "Modules/Feature54": [],
+    "Modules/Feature55": [],
+    "Modules/Feature56": [],
+    "Modules/Feature57": [],
+    "Modules/Feature58": [],
+    "Modules/Feature59": [],
+    "Modules/Feature60": [],
+    "Modules/Feature61": [],
+    "Modules/Feature62": [],
+    "Modules/Feature63": [],
+    "Modules/Feature64": []
+  },
+  "principles": [
+    {
+      "id": "P2",
+      "title": "Local understanding",
+      "findings": [
+        {
+          "id": "p2-f1",
+          "kind": "issue",
+          "severity": "low",
+          "severity_reason": "Existing callers agree on units; new callers must inspect the formatter to recover the convention.",
+          "rootCostModuleIDs": [
+            "Modules/EditorFeature"
+          ],
+          "reach_modules": [
+            "Modules/PhotoEditor",
+            "Modules/VideoEditor"
+          ],
+          "external_scopes": [],
+          "evidence": [
+            "Sources/Editor.swift:1"
+          ]
+        }
+      ],
+      "ledger": {
+        "Modules/EditorFeature": {
+          "status": "issue",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/PhotoEditor": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/VideoEditor": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature04": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature05": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature06": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature07": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature08": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature09": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature10": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature11": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature12": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature13": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature14": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature15": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature16": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature17": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature18": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature19": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature20": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature21": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature22": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature23": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature24": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature25": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature26": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature27": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature28": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature29": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature30": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature31": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature32": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature33": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature34": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature35": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature36": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature37": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature38": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature39": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature40": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature41": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature42": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature43": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature44": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature45": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature46": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature47": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature48": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature49": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature50": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature51": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature52": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature53": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature54": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature55": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature56": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature57": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature58": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature59": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature60": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature61": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature62": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature63": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        },
+        "Modules/Feature64": {
+          "status": "clear",
+          "basis": "Illustrative traced contract"
+        }
+      }
+    },
+    {
+      "id": "P4",
+      "title": "Entry points",
+      "findings": [],
+      "ledger": {
+        "Modules/EditorFeature": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        },
+        "Modules/PhotoEditor": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        },
+        "Modules/VideoEditor": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        },
+        "Modules/Feature04": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        },
+        "Modules/Feature05": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        },
+        "Modules/Feature06": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        },
+        "Modules/Feature07": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        },
+        "Modules/Feature08": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        },
+        "Modules/Feature09": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        },
+        "Modules/Feature10": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        },
+        "Modules/Feature11": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        },
+        "Modules/Feature12": {
+          "status": "clear",
+          "basis": "Illustrative assembly trace"
+        }
+      }
+    },
+    {
+      "id": "P7",
+      "title": "Dependency graph",
+      "scoring_scope": "external-only",
+      "findings": [],
+      "enforcement_cases": [
+        {
+          "id": "imports",
+          "family": "Import restrictions",
+          "outcome": "failed",
+          "evidence": [
+            "Illustrative negative fixture"
+          ]
+        },
+        {
+          "id": "cycle",
+          "family": "Target cycles",
+          "outcome": "passed",
+          "evidence": [
+            "Illustrative negative fixture"
+          ]
+        }
+      ]
+    }
+  ]
+}
