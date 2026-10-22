@@ -2,6 +2,8 @@
 
 Core issue: an abstraction’s cost is not justified by the decision, variation or invariant it protects, or the abstraction is at the wrong boundary and fails to provide its intended isolation. Evaluate usefulness rather than maximizing or minimizing protocols/modules.
 
+Competing whole-codebase mechanisms for one concern (two networking stacks, several router/coordinator systems) are screened as systemic parallel abstractions ([systemic.md](systemic.md)); P5 judges whether each individual abstraction earns its cost.
+
 Inspect protocols, wrappers, factories, adapters, mappers, generic layers, type erasure and Interface/Implementation splits where present. Trace actual callers and the decisions protected, substitution/configuration requirements, ownership/lifetime, tests and change paths. Look for forwarding chains, duplicate models/conversions, leaked implementation requirements and abstractions consumers must repeatedly work around. These are non-exhaustive lenses, not style bans.
 
 Ask both whether removing a layer would preserve required isolation and whether a demonstrated volatile decision is insufficiently isolated. Recommend an abstraction only for an evidenced benefit; do not invent future vendors, implementations or extensibility needs. A single implementation can still justify a boundary for policy ownership, deterministic tests, platform containment or lifecycle management.

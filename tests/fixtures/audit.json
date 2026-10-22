@@ -1,5 +1,6 @@
 {
   "modules": [
+    "App/ExampleApp",
     "Modules/EditorFeature",
     "Modules/PhotoEditor",
     "Modules/VideoEditor",
@@ -70,6 +71,7 @@
     "source": "Illustrative data; not a repository audit"
   },
   "consumers": {
+    "App/ExampleApp": [],
     "Modules/EditorFeature": [
       "Modules/PhotoEditor",
       "Modules/VideoEditor"
@@ -139,6 +141,31 @@
     "Modules/Feature64": []
   },
   "principles": [
+    {
+      "id": "S",
+      "title": "Systemic structure",
+      "findings": [
+        {
+          "id": "s-f1",
+          "title": "ExampleApp holds 46% of the code in one target",
+          "kind": "issue",
+          "archetype": "monolithic-module",
+          "candidate_ids": [
+            "S-monolithic-module-1"
+          ],
+          "severity": "high",
+          "severity_reason": "Illustrative: six feature folders reference each other directly, so no feature can be extracted or validated alone",
+          "rootCostModuleIDs": [
+            "App/ExampleApp"
+          ],
+          "reach_modules": [],
+          "external_scopes": [],
+          "evidence": [
+            "Illustrative: App/ExampleApp/Library/LibraryViewController.swift:42 constructs EditorSession from Sharing"
+          ]
+        }
+      ]
+    },
     {
       "id": "P2",
       "title": "Local understanding",
@@ -417,6 +444,10 @@
         "Modules/Feature64": {
           "status": "clear",
           "basis": "Illustrative traced contract"
+        },
+        "App/ExampleApp": {
+          "status": "clear",
+          "basis": "Illustrative: composition and feature folders inspected"
         }
       }
     },
@@ -472,6 +503,10 @@
         "Modules/Feature12": {
           "status": "clear",
           "basis": "Illustrative assembly trace"
+        },
+        "App/ExampleApp": {
+          "status": "clear",
+          "basis": "Illustrative: composition and feature folders inspected"
         }
       }
     },
@@ -499,5 +534,134 @@
         }
       ]
     }
-  ]
+  ],
+  "module_weights": {
+    "App/ExampleApp": 30000,
+    "Modules/EditorFeature": 3000,
+    "Modules/PhotoEditor": 1200,
+    "Modules/VideoEditor": 1000,
+    "Modules/Feature04": 500,
+    "Modules/Feature05": 500,
+    "Modules/Feature06": 500,
+    "Modules/Feature07": 500,
+    "Modules/Feature08": 500,
+    "Modules/Feature09": 500,
+    "Modules/Feature10": 500,
+    "Modules/Feature11": 500,
+    "Modules/Feature12": 500,
+    "Modules/Feature13": 500,
+    "Modules/Feature14": 500,
+    "Modules/Feature15": 500,
+    "Modules/Feature16": 500,
+    "Modules/Feature17": 500,
+    "Modules/Feature18": 500,
+    "Modules/Feature19": 500,
+    "Modules/Feature20": 500,
+    "Modules/Feature21": 500,
+    "Modules/Feature22": 500,
+    "Modules/Feature23": 500,
+    "Modules/Feature24": 500,
+    "Modules/Feature25": 500,
+    "Modules/Feature26": 500,
+    "Modules/Feature27": 500,
+    "Modules/Feature28": 500,
+    "Modules/Feature29": 500,
+    "Modules/Feature30": 500,
+    "Modules/Feature31": 500,
+    "Modules/Feature32": 500,
+    "Modules/Feature33": 500,
+    "Modules/Feature34": 500,
+    "Modules/Feature35": 500,
+    "Modules/Feature36": 500,
+    "Modules/Feature37": 500,
+    "Modules/Feature38": 500,
+    "Modules/Feature39": 500,
+    "Modules/Feature40": 500,
+    "Modules/Feature41": 500,
+    "Modules/Feature42": 500,
+    "Modules/Feature43": 500,
+    "Modules/Feature44": 500,
+    "Modules/Feature45": 500,
+    "Modules/Feature46": 500,
+    "Modules/Feature47": 500,
+    "Modules/Feature48": 500,
+    "Modules/Feature49": 500,
+    "Modules/Feature50": 500,
+    "Modules/Feature51": 500,
+    "Modules/Feature52": 500,
+    "Modules/Feature53": 500,
+    "Modules/Feature54": 500,
+    "Modules/Feature55": 500,
+    "Modules/Feature56": 500,
+    "Modules/Feature57": 500,
+    "Modules/Feature58": 500,
+    "Modules/Feature59": 500,
+    "Modules/Feature60": 500,
+    "Modules/Feature61": 500,
+    "Modules/Feature62": 500,
+    "Modules/Feature63": 500,
+    "Modules/Feature64": 500
+  },
+  "structure": {
+    "policy": "structure-scan-v1",
+    "repository": {
+      "modules": 65,
+      "files": 812,
+      "loc": 65700,
+      "largest_module": "App/ExampleApp",
+      "largest_share": 0.4566,
+      "top3_share": 0.5205,
+      "concentration_hhi": 0.2148,
+      "effective_modules": 4.7,
+      "propagation_cost": 0.0161,
+      "mass_propagation_cost": 0.2141,
+      "cycles": 0,
+      "unowned_share": 0.4566
+    }
+  },
+  "systemic": {
+    "candidates": [
+      {
+        "id": "S-monolithic-module-1",
+        "archetype": "monolithic-module",
+        "modules": [
+          "App/ExampleApp"
+        ],
+        "severity_floor": "high",
+        "trigger": "46% of first-party code in one target; folder reference density 62%",
+        "metrics": {
+          "mass_share": 0.457,
+          "divisibility": {
+            "groups": 6,
+            "density": 0.62
+          }
+        }
+      },
+      {
+        "id": "S-contamination-hub-1",
+        "archetype": "contamination-hub",
+        "modules": [
+          "Modules/EditorFeature"
+        ],
+        "severity_floor": "medium",
+        "trigger": "31% of library code depends on EditorFeature; drags vendors, large",
+        "metrics": {
+          "library_dependents_mass_share": 0.31
+        }
+      }
+    ],
+    "resolutions": {
+      "S-monolithic-module-1": {
+        "status": "confirmed",
+        "finding": "s-f1"
+      },
+      "S-contamination-hub-1": {
+        "status": "dismissed",
+        "reason": "Illustrative: both vendors stay internal; consumers import only EditorFeature value types",
+        "evidence": [
+          "Illustrative: Modules/EditorFeature/Sources/Editor.swift:1"
+        ]
+      }
+    }
+  }
 }

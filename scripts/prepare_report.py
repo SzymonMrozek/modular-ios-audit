@@ -57,18 +57,33 @@ def snapshot(result, titles):
     for p in result['principles']:
         pid = p['id']
         if p['gate'] == 'skipped':
-            roots, affected, risk, coverage = '—', '—', 'Skipped', ''
+            roots, affected, risk_label, coverage = '—', '—', 'Skipped', ''
         elif p['impact']['scope'] == 'external-only':
-            roots, affected, risk, coverage = '—', '—', f"{p['external_enforcement']['failed']}/{p['external_enforcement']['evaluated_families']} families failed", 'External enforcement'
+            roots, affected, risk_label, coverage = '—', '—', f"{p['external_enforcement']['failed']}/{p['external_enforcement']['evaluated_families']} families failed", 'External enforcement'
         else:
             roots = str(p['rootCostModules'])
             affected = f"{p['affectedModules'] if p['affectedModules'] is not None else '?'}/{result['total']}"
-            risk = f"{percent(p['risk'])} · {p['risk']['band'] or 'N/A'}"
-            coverage = f"{p['counts']['issue'] + p['counts']['clear']}/{p['applicable']} classified"
-        rows.append(f'<div class="score-row"><a class="score-name" href="#{pid.lower()}">{html.escape(pid + " " + titles.get(pid, ""))}<span class="score-sub">{coverage}</span></a><div>{roots}</div><div>{affected}</div><div>{risk}</div><div>{badge(p["gate"].upper(), p["gate"])}</div></div>')
+            risk_label = f"{percent(p['risk'])} · {p['risk']['band'] or 'N/A'}"
+            coverage = 'Structure scan' if pid == 'S' else f"{p['counts']['issue'] + p['counts']['clear']}/{p['applicable']} classified"
+        rows.append(f'<div class="score-row"><a class="score-name" href="#{pid.lower()}">{html.escape(pid + " " + titles.get(pid, ""))}<span class="score-sub">{coverage}</span></a><div>{roots}</div><div>{affected}</div><div>{risk_label}</div><div>{badge(p["gate"].upper(), p["gate"])}</div></div>')
     overall_band = result['risk']['band'] or 'N/A'
     band_chip = f'<span class="impact-band {overall_band.lower()}" aria-label="Overall risk band">{overall_band}</span>'
-    return f'<section class="scoreboard" id="scores" data-overview><div class="verdict"><h2>Average risk · {percent(result["risk"])}</h2>{band_chip}<span class="fact-chip">Coverage: {"complete" if result["risk"]["coverage_complete"] else "partial"}</span></div><div class="score-overall"><span>Observed {percent(result["observed_risk"])}</span><span>{result["total"]}/{result["inventory_total"]} modules in scope</span></div><div class="score-head"><span>Principle</span><span>Root cost</span><span>Affected</span><span>Risk</span><span>Local status</span></div>{"".join(rows)}</section>'
+    risk = result['risk']
+    headline = f'Architecture health · withheld ({html.escape(risk["withheld"])})' if risk['withheld'] else f'Architecture health · {risk["health"]}/100'
+    systemic = result['systemic']
+    facts = [f'Risk {percent(risk)}', f'Observed {result["observed_risk"]["health"] if result["observed_risk"]["health"] is not None else "N/A"}/100',
+             f'{result["total"]}/{result["inventory_total"]} modules in scope', 'Weighted by code mass' if result['weighting'] == 'code-mass' else 'Equal module weights',
+             f'Systemic candidates {systemic["candidates"] - len(systemic["unresolved"])}/{systemic["candidates"]} resolved' if systemic['screened'] else 'Systemic screen missing']
+    structure = result.get('structure')
+    structure_row = '' if not structure else '<div class="score-overall score-structure">' + ''.join(f'<span>{html.escape(label)}</span>' for label in (
+        f'Effective modules {structure["effective_modules"]}', f'Largest {structure["largest_module"]} {structure["largest_share"] * 100:.0f}%',
+        f'Change reaches {structure["mass_propagation_cost"] * 100:.0f}% of code', f'Cycles {structure["cycles"]}')) + '</div>'
+    top = [r for r in result['ranking'] if r['open']][:5]
+    problems = '' if not top else '<ol class="top-problems" aria-label="Top problems by impact">' + ''.join(
+        f'<li><a href="#{html.escape(r["id"])}">{html.escape(titles.get(r["id"], r["id"]))}</a><span class="score-sub">{"Systemic · " if r["systemic"] else ""}{r["severity"]} · {r["impact"] * 100:.1f}% risk</span></li>' for r in top) + '</ol>'
+    return (f'<section class="scoreboard" id="scores" data-overview><div class="verdict"><h2>{headline}</h2>{band_chip}<span class="fact-chip">Coverage: {"complete" if risk["coverage_complete"] else "partial"}</span></div>'
+            f'<div class="score-overall">{"".join(f"<span>{html.escape(fact)}</span>" for fact in facts)}</div>{structure_row}{problems}'
+            f'<div class="score-head"><span>Principle</span><span>Root cost</span><span>Affected</span><span>Risk</span><span>Local status</span></div>{"".join(rows)}</section>')
 
 
 def prepare(data, document):
@@ -91,7 +106,8 @@ def prepare(data, document):
     for script_id in ('audit-data', 'audit-scoring', 'audit-navigation'):
         document = re.sub(r'<script\b[^>]*\bid=["\']' + script_id + r'["\'][^>]*>[\s\S]*?</script>', '', document)
     document, count = re.subn(r'<section\b[^>]*class=["\']scoreboard["\'][^>]*>[\s\S]*?</section>',
-        lambda _: snapshot(result, {p['id']: p.get('title', '') for p in data['principles']}), document, count=1)
+        lambda _: snapshot(result, {**{p['id']: p.get('title', '') for p in data['principles']},
+                                    **{f['id']: f.get('title', f['id']) for p in data['principles'] for f in p.get('findings', [])}}), document, count=1)
     if not count:
         raise ValueError('Report needs a section.scoreboard with id="scores"')
     for p in result['principles']:

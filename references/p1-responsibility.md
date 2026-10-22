@@ -2,6 +2,8 @@
 
 Core issue: a module boundary combines independently changing responsibilities or splits one responsibility so its decisions must be maintained across owners. Evaluate cohesion by the capability, policy or invariant delivered and the consumers/reasons for change, not by technical labels.
 
+Whole-target concentration (a monolithic app or module) and contamination hubs are screened by the systemic evaluator ([systemic.md](systemic.md)); P1 still evaluates responsibility boundaries inside and around them, and cross-tags rather than duplicates a confirmed S finding.
+
 Inspect public APIs, internal collaboration, consumers, tests, resources and declared dependencies. Different technical layers can serve one responsibility: search history may own values, persistence, behavior and tests; a feature may own views, state and internal navigation. A shared technical layer is not sufficient cohesion.
 
 ## Discover responsibilities

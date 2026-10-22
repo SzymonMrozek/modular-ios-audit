@@ -1,17 +1,17 @@
 ---
 name: modular-ios-audit
-description: Audit an iOS codebase against eight modular architecture principles using a dedicated evaluator per selected principle. Use for an architecture assessment, boundary review, or modularity audit; supports skipping principles. Excludes build-speed and agent-workflow optimization advice.
+description: Audit an iOS codebase for modular architecture health. Screens the whole module graph for systemic problems first (monolithic targets, contamination hubs, tangled graphs, mixed concerns, parallel abstractions), then evaluates eight principles with a dedicated evaluator each and scores code-mass exposure. Use for an architecture assessment, boundary review, or modularity audit; supports skipping principles. Excludes build-speed and agent-workflow optimization advice.
 license: MIT
 compatibility: Requires repository read and shell access, Python 3.10+, and Pygments for highlighted diffs. Independent evaluations require subagents. Browser tooling is optional.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Modular iOS audit
 
 Evaluate the design principles in [Modular iOS Architecture for Agentic Coding](https://mrozek.dev/posts/modular-ios-architecture-for-agentic-coding). The rubrics incorporate the author's reviewed interpretation. Exclude operational advice about cache tuning, selective testing, scaffolding, linking, and workflow telemetry. Explaining a boundary's dependency-node invalidation radius is in scope; claiming measured rebuild/cache/test effects requires evidence.
 
-Deliver a complete, evidence-backed inventory with concise explanations and concrete code corrections. Audit code; do not change it unless separately requested. Respect the audited repository’s instructions, validation requirements and write permissions.
+Deliver a complete, evidence-backed inventory with concise explanations and concrete code corrections, ordered so the most consequential, structural problems come first. The architecture health score is the primary signal; it must rank a tangled, monolithic codebase below a well-modularized one. Audit code; do not change it unless separately requested. Respect the audited repository’s instructions, validation requirements and write permissions.
 
 ## Runtime portability
 
@@ -23,10 +23,11 @@ Use the host agent’s own repository, shell, delegation and browser tools. No C
 
 ## Select scope
 
-Interpret selections by ID or name: “P1, P3”, “skip P5 and P8”, or equivalent natural language. Default to all eight. Ask only if selection is ambiguous or contradictory. State the selected scope before evaluation. Skipped principles get no evaluator and no verdict. Accept explicit modules to ignore as names or stable paths; resolve ambiguous matches before evaluating. Offer a concise optional “Modules to ignore?” input when no exclusion preference is known, continue independent discovery, and default to none if omitted. Record exclusions/reasons in the shared map and report; never infer them from a module name. Read scoring.md for scope filtering and denominator changes.
+Interpret selections by ID or name: “P1, P3”, “skip P5 and P8”, or equivalent natural language. Default to all eight. The systemic screen (S) always runs; it cannot be skipped while the scan reports candidates. Ask only if selection is ambiguous or contradictory. State the selected scope before evaluation. Skipped principles get no evaluator and no verdict. Accept explicit modules to ignore as names or stable paths; resolve ambiguous matches before evaluating. Offer a concise optional “Modules to ignore?” input when no exclusion preference is known, continue independent discovery, and default to none if omitted. Record exclusions/reasons in the shared map and report; never infer them from a module name. Read scoring.md for scope filtering and denominator changes.
 
 | ID | Principle | Evaluator reference |
 |---|---|---|
+| S | Systemic structure (always first) | [systemic.md](references/systemic.md) |
 | P1 | One clear responsibility | [p1-responsibility.md](references/p1-responsibility.md) |
 | P2 | Local understanding | [p2-local-understanding.md](references/p2-local-understanding.md) |
 | P3 | Information hiding | [p3-information-hiding.md](references/p3-information-hiding.md) |
@@ -37,6 +38,8 @@ Interpret selections by ID or name: “P1, P3”, “skip P5 and P8”, or equiv
 | P8 | Ergonomic boundaries | [p8-ergonomics.md](references/p8-ergonomics.md) |
 
 ## Prepare shared facts
+
+Start with the deterministic structure scan: `python3 scripts/structure_scan.py <repo> --output structure.json` (see [systemic.md](references/systemic.md)). Check its module discovery against the real build system; when it disagrees, write a module map from the resolved manifests and rerun. Its module IDs, direct consumer graph and code mass (`module_weights`) become the frozen inventory, graph and weights. Its repository metrics (code concentration, effective modules, propagation cost, cycles) and per-module metrics are shared facts; its `candidates` go only to the systemic evaluator.
 
 Inspect the repository’s actual module/build system, ownership, public contracts, feature/service invocation paths, composition roots and relevant instructions. Map declared dependencies, standalone versus split modules, source/resource/test membership and validation entry points. Follow data/state ownership and platform/vendor boundaries where relevant. Distinguish authored from generated/vendor code. Include tests as evidence of contracts and consumption; do not assume a particular UI, concurrency, DI or project-generation framework.
 
@@ -58,13 +61,13 @@ Keep discovery separate from correction and presentation. The correction sketche
 
 ## Delegate independently
 
-Create exactly one dedicated evaluator per enabled principle. Each reads its assigned reference and relevant source, declarations, callers, and checks. Give it:
+Dispatch the systemic evaluator (S) first, with [systemic.md](references/systemic.md), the scan output and its candidates; it must confirm or dismiss every candidate. Then create exactly one dedicated evaluator per enabled principle. Each reads its assigned reference and relevant source, declarations, callers, and checks. Give it:
 
 - Its principle ID and reference path, this skill's evidence and return requirements, and requested scope.
 - Repository location/state, the shared factual module inventory/map, and [scoring.md](references/scoring.md)'s counting, coverage and gate requirements.
 - Permission to inspect and run permitted nonmutating checks, but no permission to fix code, change configuration, or message other chats.
 
-Do not give agents suspected findings or other evaluators' conclusions before their independent assessments. Bound concurrency by available slots, scheduling remaining evaluators as slots free up. Do not merge principles into one evaluator to save slots. If delegation is unavailable, disclose that independent evaluation cannot be fulfilled and offer a labeled single-agent alternative; never claim independence.
+Do not give principle evaluators the scan candidates, suspected findings or other evaluators' conclusions before their independent assessments; scan metrics are facts they may use. Bound concurrency by available slots, scheduling remaining evaluators as slots free up. Do not merge principles into one evaluator to save slots. If delegation is unavailable, disclose that independent evaluation cannot be fulfilled and offer a labeled single-agent alternative; never claim independence.
 
 ### Evidence requirements
 
@@ -83,7 +86,7 @@ Do not give agents suspected findings or other evaluators' conclusions before th
 Return these fields concisely:
 
 ```text
-principle: Pn
+principle: Pn | S
 status: issue | clear-in-scope | uncertain
 coverage: modules/files, discovery surfaces/scenarios traced, checks inspected/run, uninspected areas
 ledger: one module identity -> issue | clear | not-applicable | unassessed, with inspection basis
@@ -92,7 +95,8 @@ check_unknowns: required checks not demonstrated
 findings:
   - title: concrete boundary defect
     kind: issue | suggestion, justified by a traced consequence or its absence
-    severity: low | medium | high | critical, with consequence-based reason (independent of graph popularity)
+    severity: low | medium | high | critical, using the anchors in scoring.md, with consequence-based reason (independent of graph popularity)
+    archetype, candidate_ids, floor_override_reason: S findings only; see systemic.md
     rootCostModuleIDs: unique module identities containing the defect, with evidence
     reach_modules: verified semantic consumers; affectedModuleIDs are computed separately from the frozen direct-consumer graph
     external_scopes: app targets/tooling outside the module inventory
@@ -116,14 +120,14 @@ excluded: checked candidates that are justified or insufficiently supported
 limitations: missing evidence, unverified matches or uninspected scope
 ```
 
-Use `issue` when at least one supported finding exists, preserving any uncertainty elsewhere. `clear-in-scope` means no issue found within stated coverage, never a guarantee about uninspected code. Prioritize by demonstrated consequence, not number of violated principles.
+Use `issue` when at least one supported finding exists, preserving any uncertainty elsewhere. `clear-in-scope` means no issue found within stated coverage, never a guarantee about uninspected code. Prioritize by demonstrated consequence, not number of violated principles. Assess the largest modules (by code mass) first; an unassessed giant module is a bigger gap than many unassessed leaves. The S evaluator also returns `resolutions: candidate -> confirmed (finding id) | dismissed (reason, evidence)`.
 
 ## Reconcile and present
 
-Check evaluator evidence against its rubric. Ask the same evaluator to resolve missing traces or contradictions. Combine duplicate causes into one finding tagged with relevant IDs; independent defects at one location remain separate. Do not manufacture one finding per principle. Calculate separate rootCostModules and distinct affectedModules. Keep raw reach separate from consequence-weighted risk, using the maximum supported consequence weight per affected module. Overall risk is the equal mean of selected applicable module-principle risks, never a union of roots/consumers. Show each individual principle risk and the overall average risk with its LOW / MEDIUM / HIGH risk-band label (<3%, 3–<10%, ≥10%; N/A when unknown). Do not show an overall GATE/PASS/WATCH/FAIL badge or aggregate verdict. Retain coverage and local check results separately; see [scoring.md](references/scoring.md). Publish the coverage ledger, numeric average and assessment limits without an aggregate verdict.
+Check evaluator evidence against its rubric. Ask the same evaluator to resolve missing traces or contradictions. Combine duplicate causes into one finding tagged with relevant IDs; when a principle evaluator independently found a systemic cause, merge it into the S finding and keep principle-specific consequences separate. Independent defects at one location remain separate. Do not manufacture one finding per principle. Score with [scoring.md](references/scoring.md): code-mass-weighted exposure of owners and direct consumers, strongest consequence per dimension, combined across dimensions. The headline is **Architecture health** (0–100) with its LOW / MEDIUM / HIGH risk band; it is withheld while any systemic candidate is unresolved. Show the top problems by impact under the headline, each principle's risk and coverage (including assessed code mass), and no aggregate PASS/FAIL badge.
 
-When feedback challenges a finding or its correction, revisit its mechanism and counterevidence and broaden the related consumer sweep. Generalize recurring causes across modules rather than adding filters for the named example or assuming the user's hypothesis is always a defect. If asked to improve this skill, encode the general decision rule and correction shape, not repository-specific names or a closed list of past failures.
+When feedback challenges a finding or its correction, revisit its mechanism and counterevidence and broaden the related consumer sweep. When a score contradicts an informed reviewer's ranking of repositories, check the structure scan's discovery and the systemic resolutions before adjusting rubrics. Generalize recurring causes across modules rather than adding filters for the named example or assuming the user's hypothesis is always a defect. If asked to improve this skill, encode the general decision rule and correction shape, not repository-specific names or a closed list of past failures.
 
-Before final assembly, read [report.md](references/report.md) and inspect/render [report-template.html](assets/report-template.html). Default to its visual, self-contained HTML: one blunt sentence in each of “Describe the problem”, “Why it’s a problem” and “How to fix it”; current-only visuals under the problem; proposed visuals first under the fix, followed by syntax-highlighted git diffs. Preserve useful dot/dash capability tables. Outside those three comments use facts, labels, tables, diagrams and code; keep full reasoning in closed Evidence, not visible prose. Adapt the template to the actual findings; do not concatenate evaluator reports into a prose-heavy page. Honor a user-requested format/style; plain Markdown is the fallback. List every supported problem in P1 → P8 order, with all verified examples available beneath its problem; do not impose a top-three or one-example quota. Keep the hierarchy clear: principle → distinct problem/module case → supporting occurrences. A brief chat handoff may link the complete report. Every problem needs its consequence mechanism, concrete fix example, verified evidence and rule. Group every problem's current/proposed source changes by module or repository scope → file/type → code, including same-file API edits, callers, tests and lint/configuration changes. For visual reports, selecting a principle shows every issue as a readable, collapsed disclosure with root-cost/affected metrics. Give each issue a stable direct link; open the correct principle and issue for deep links, preserve browser Back/Forward and keyboard navigation, and expose all grouped fixes when expanded. Use the template’s embedded navigation behavior; collapse nested occurrence/source inventories by default. Never show summed per-owner consumer counts as affected modules. Include explicit module exclusions and compact Resolved / Invalid for this repo / Acceptable for this project checkboxes, with no reason field or confirmation. Recalculate on change; provide one score-header Recalculate button, and keep import/export/reset closed. Only user choices remove a finding from adjusted risk. Show issues with observed risk under2% as compact rows in one closed Suggestions & tiny issues group, retaining full fixes and evidence through deep links. Show relocations through actual source/destination file identities and diff hunks. Omit generic MOVES/STAYS badges. Use the concise section labels and phase ordering in report.md. Highlight whole Swift/Python/shell/Objective-C and other iOS snippets before slicing diff hunks; preserve source text and multiline syntax state. Do not fill every section with a generic box/arrow chain; use a dependency topology, call sequence, state/authority model, protocol capability map or rule-result comparison that explains the actual mechanism. Omit a diagram when the diff or text is sufficient.
+Before final assembly, read [report.md](references/report.md) and inspect/render [report-template.html](assets/report-template.html). Default to its visual, self-contained HTML: one blunt sentence in each of “Describe the problem”, “Why it’s a problem” and “How to fix it”; current-only visuals under the problem; proposed visuals first under the fix, followed by syntax-highlighted git diffs. Preserve useful dot/dash capability tables. Outside those three comments use facts, labels, tables, diagrams and code; keep full reasoning in closed Evidence, not visible prose. Adapt the template to the actual findings; do not concatenate evaluator reports into a prose-heavy page. Honor a user-requested format/style; plain Markdown is the fallback. List every supported problem with the S panel first, then P1 → P8, with all verified examples available beneath its problem; do not impose a top-three or one-example quota. Keep the hierarchy clear: principle → distinct problem/module case → supporting occurrences. A brief chat handoff may link the complete report. Every problem needs its consequence mechanism, concrete fix example, verified evidence and rule. Group every problem's current/proposed source changes by module or repository scope → file/type → code, including same-file API edits, callers, tests and lint/configuration changes. For visual reports, selecting a principle shows every issue as a readable, collapsed disclosure with root-cost/affected metrics. Give each issue a stable direct link; open the correct principle and issue for deep links, preserve browser Back/Forward and keyboard navigation, and expose all grouped fixes when expanded. Use the template’s embedded navigation behavior; collapse nested occurrence/source inventories by default. Never show summed per-owner consumer counts as affected modules. Include explicit module exclusions and compact Resolved / Invalid for this repo / Acceptable for this project checkboxes, with no reason field or confirmation. Recalculate on change; provide one score-header Recalculate button, and keep import/export/reset closed. Only user choices remove a finding from adjusted risk. Show issues with observed impact under 1% as compact rows in one closed Suggestions & tiny issues group, retaining full fixes and evidence through deep links. Show relocations through actual source/destination file identities and diff hunks. Omit generic MOVES/STAYS badges. Use the concise section labels and phase ordering in report.md. Highlight whole Swift/Python/shell/Objective-C and other iOS snippets before slicing diff hunks; preserve source text and multiline syntax state. Do not fill every section with a generic box/arrow chain; use a dependency topology, call sequence, state/authority model, protocol capability map or rule-result comparison that explains the actual mechanism. Omit a diagram when the diff or text is sufficient.
 
 Deliver an accessible local URL using [prepare_report.py](scripts/prepare_report.py); prefer opening the OS default external browser rather than an agent-only preview. Verify the saved report and its links are readable, print/link its file URL, and state any browser-opening limitation. Follow [report.md](references/report.md) for the self-contained interactive report contract.
