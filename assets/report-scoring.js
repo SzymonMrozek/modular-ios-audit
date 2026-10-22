@@ -1,9 +1,10 @@
 /* No dependencies. Python scorer is authoritative; parity fixtures verify this browser projection. */
 (() => {
-  const units = {low: 1, medium: 2, high: 8, critical: 14}, rank = {low: 0, medium: 1, high: 2, critical: 3};
+  const units = {low: 1, medium: 4, high: 10, critical: 10}, rank = {low: 0, medium: 1, high: 2, critical: 3};
   const EPS = 1e-12;
-  const band = v => v === null ? null : v < 0.1 - EPS ? 'LOW' : v < 0.25 - EPS ? 'MEDIUM' : 'HIGH';
-  const measure = v => ({score: v, percent: v === null ? null : v * 100, health: v === null ? null : Math.round((1 - v) * 100), band: band(v)});
+  // Integer numerators keep band boundaries exact: LOW < 3%, MEDIUM < 10%, HIGH from 10%.
+  const measure = (num, den) => num === null || !den ? {score: null, percent: null, band: null}
+    : {score: num / den, percent: num * 100 / den, band: num * 100 < 3 * den ? 'LOW' : num * 100 < 10 * den ? 'MEDIUM' : 'HIGH'};
   const normalize = d => ({...d, status: d.status === 'intended' ? 'accepted' : d.status});
   function compute(data) {
     const excluded = new Set((data.excluded_modules || []).map(e => e.module));
@@ -11,8 +12,6 @@
     const eligible = new Set(modules), graph = data.consumers || {}, N = modules.length;
     const authority = ['source', 'authority'].some(k => typeof data.consumer_graph_provenance?.[k] === 'string' && data.consumer_graph_provenance[k].trim());
     const complete = data.consumer_graph_complete === true && authority && modules.every(m => Object.hasOwn(graph, m));
-    const weight = Object.fromEntries(modules.map(m => [m, data.module_weights ? data.module_weights[m] : 1]));
-    const mass = modules.reduce((a, m) => a + weight[m], 0);
     const roots = f => (f.evidencedRootCostModuleIDs || f.rootCostModuleIDs || f.observed_modules || []).filter(m => eligible.has(m));
     const exposure = (rs, implementationOnly = false) => implementationOnly ? [...new Set(rs)] : [...new Set([...rs, ...rs.flatMap(m => graph[m].filter(n => eligible.has(n)))])];
     const footprint = (fs, external = false, implementationOnly = false) => {
@@ -22,18 +21,14 @@
       const affected = available ? [...new Set(spreading.flatMap(m => graph[m].filter(n => eligible.has(n))))].sort() : null;
       const exposed = available ? [...new Set([...owners, ...affected])] : null;
       return {rootCostModules: external ? null : owners.length, rootCostModuleIDs: owners, affectedModules: affected?.length ?? null, affectedModuleIDs: affected,
-        impact: measure(exposed ? exposed.reduce((a, m) => a + weight[m], 0) / mass : null)};
+        impact: measure(exposed ? exposed.length : null, N)};
     };
     const risk = pairs => {
-      if (!complete || !N) return measure(null);
+      if (!complete || !N) return {...measure(null, N), units: null, involved_modules: null};
       const values = new Map();
-      for (const [f, pid] of pairs) for (const m of exposure(roots(f), f.implementation_only === true)) {
-        const row = values.get(m) || new Map();
-        row.set(pid, Math.max(row.get(pid) || 0, units[f.severity])); values.set(m, row);
-      }
-      let total = 0;
-      for (const [m, row] of values) total += weight[m] * (1 - [...row.values()].reduce((clean, u) => clean * (1 - u / 20), 1));
-      return measure(total / mass);
+      for (const [f] of pairs) for (const m of exposure(roots(f), f.implementation_only === true)) values.set(m, Math.max(values.get(m) || 0, units[f.severity]));
+      const sum = [...values.values()].reduce((a, b) => a + b, 0);
+      return {...measure(sum, 10 * N), units: sum, involved_modules: values.size};
     };
     const owners = {'monolithic-module': 'P1', 'contamination-hub': 'P1', 'mixed-concerns': 'P1', 'parallel-abstractions': 'P5', 'tangled-graph': 'P7'};
     const skipped = new Set(data.principles.filter(p => p.skipped).map(p => p.id));
@@ -55,28 +50,26 @@
         const observed = inScope && kind === 'issue';
         const active = observed && decision.status === 'open';
         const findingExternal = !(f.rootCostModuleIDs || f.observed_modules || []).length && Boolean(f.external_scopes?.length);
-        const originalRisk = findingExternal ? measure(null) : risk(observed ? [[f, p.id]] : []), implementationOnly = f.implementation_only === true;
-        const presentation = kind === 'suggestion' ? 'suggestion' : originalRisk.score !== null && originalRisk.score < 0.01 - EPS ? 'tiny' : 'issue';
+        const originalRisk = findingExternal ? measure(null, N) : risk(observed ? [[f, p.id]] : []), implementationOnly = f.implementation_only === true;
+        const presentation = kind === 'suggestion' ? 'suggestion' : originalRisk.score !== null && originalRisk.units * 100 < 2 * 10 * N && ['low', 'medium'].includes(f.severity) ? 'tiny' : 'issue';
         return {...f, evidencedRootCostModuleIDs: f.rootCostModuleIDs || f.observed_modules || [], kind, presentation, decision, in_scope: Boolean(inScope), active,
           structural: Boolean(f.candidate_ids?.length), ...footprint(active ? [f] : [], findingExternal, implementationOnly), observed: footprint(observed ? [f] : [], findingExternal, implementationOnly),
-          risk: findingExternal ? measure(null) : risk(active ? [[f, p.id]] : []), observed_risk: originalRisk};
+          risk: findingExternal ? measure(null, N) : risk(active ? [[f, p.id]] : []), observed_risk: originalRisk};
       });
       const observed = findings.filter(f => f.in_scope && f.kind === 'issue'), open = observed.filter(f => f.active);
       const ledger = p.ledger || {};
       const counts = Object.fromEntries(['issue', 'clear', 'not-applicable', 'unassessed'].map(s => [s, modules.filter(m => (ledger[m]?.status || 'unassessed') === s).length]));
       const applicable = N - counts['not-applicable'];
-      const applicableMass = modules.filter(m => ledger[m]?.status !== 'not-applicable').reduce((a, m) => a + weight[m], 0);
-      const assessedMass = modules.filter(m => ['issue', 'clear'].includes(ledger[m]?.status)).reduce((a, m) => a + weight[m], 0);
       const cases = p.enforcement_cases || [];
       const enforcement = {evaluated_families: cases.length, failed: cases.filter(c => c.outcome === 'failed').length, unknown: cases.filter(c => c.outcome === 'unknown').length};
-      const current = external ? measure(null) : risk(open.map(f => [f, p.id])), baseline = external ? measure(null) : risk(observed.map(f => [f, p.id]));
+      const current = external ? measure(null, N) : risk(open.map(f => [f, p.id])), baseline = external ? measure(null, N) : risk(observed.map(f => [f, p.id]));
       const attention = Boolean(p.hard_gates?.length || enforcement.failed || open.some(f => f.severity === 'critical'));
       const gate = current.band === 'HIGH' ? 'fail'
         : unresolved.some(id => candidates.find(c => c.id === id).principle === p.id) || p.check_unknowns?.length || enforcement.unknown || external && !cases.length || !external && (counts.unassessed || applicable && !complete) ? 'incomplete'
         : !external && !applicable ? 'not-applicable' : current.band === 'MEDIUM' || attention ? 'watch' : 'pass';
       if (!external) { allOpen.push(...open); allObserved.push(...observed); }
       return {id: p.id, ...footprint(open, external), external, observed: footprint(observed, external), risk: current, observed_risk: baseline, counts, applicable,
-        assessed_mass: applicableMass ? assessedMass / applicableMass : null,
+        coverage: applicable ? (counts.issue + counts.clear) / applicable : null,
         accepted_findings: observed.filter(f => f.decision.status === 'accepted').length, resolved_findings: observed.filter(f => f.decision.status === 'resolved').length, invalid_findings: observed.filter(f => f.decision.status === 'invalid').length,
         external_enforcement: enforcement, attention_required: attention, gate, findings};
     });
@@ -85,20 +78,20 @@
     const overall = (fs, field) => {
       const known = included.every(p => p[field].score !== null);
       const withheld = unresolved.length ? 'structural candidates unresolved' : known ? null : 'unknown principle risk';
-      return {...(withheld ? measure(null) : risk(unique(fs))), withheld, included_principles: included.map(p => p.id),
+      return {...(withheld ? {...measure(null, N), units: null, involved_modules: null} : risk(unique(fs))), withheld, included_principles: included.map(p => p.id),
         coverage_complete: !unresolved.length && included.every(p => !p.counts.unassessed && !(data.principles.find(source => source.id === p.id).check_unknowns || []).length),
-        assessed_mass_min: included.some(p => p.assessed_mass !== null) ? Math.min(...included.filter(p => p.assessed_mass !== null).map(p => p.assessed_mass)) : null};
+        coverage_min: included.some(p => p.coverage !== null) ? Math.min(...included.filter(p => p.coverage !== null).map(p => p.coverage)) : null};
     };
     const adjusted = overall(allOpen, 'risk');
     const seen = new Set(), ranking = [];
     for (const p of principles) for (const f of p.findings || []) if (f.kind === 'issue' && f.in_scope && f.observed_risk.score !== null && !seen.has(f.id)) {
-      seen.add(f.id); ranking.push({id: f.id, principles: tagged.get(f.id), structural: f.structural, severity: f.severity, impact: f.observed_risk.score, open: f.active});
+      seen.add(f.id); ranking.push({id: f.id, principles: tagged.get(f.id), structural: f.structural, severity: f.severity, impact: f.observed_risk.score, defect_modules: f.observed.rootCostModules, involved_modules: f.observed_risk.involved_modules, open: f.active});
     }
     const tie = d => Math.abs(d) > EPS ? d : 0;
     ranking.sort((a, b) => tie(b.impact - a.impact) || Number(b.structural) - Number(a.structural) || rank[b.severity] - rank[a.severity] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const gates = new Set(principles.map(p => p.gate));
     const gate = gates.size === 1 && gates.has('skipped') ? 'skipped' : [...gates].every(g => ['skipped', 'not-applicable'].includes(g)) ? 'not-applicable' : adjusted.score === null ? 'incomplete' : adjusted.band === 'HIGH' ? 'fail' : adjusted.band === 'MEDIUM' ? 'watch' : 'pass';
-    return {total: N, inventory_total: data.modules.length, risk: adjusted, observed_risk: overall(allObserved, 'observed_risk'), overall_gate: gate, ranking,
+    return {total: N, inventory_total: data.modules.length, ...footprint(allOpen), risk: adjusted, observed_risk: overall(allObserved, 'observed_risk'), overall_gate: gate, ranking,
       structural: {screened: Boolean(data.structural), candidates: inReview.length, unresolved}, structure: data.structure?.repository || null, principles};
   }
   globalThis.ModularAuditScoring = {compute};
@@ -128,7 +121,7 @@
   try { const saved = localStorage.getItem(storageKey); if (saved) { const parsed = JSON.parse(saved); validate(parsed); state = parsed; } }
   catch { message.textContent = 'Storage unavailable. Export to keep your choices.'; }
   const text = (parent, tag, value, cls = '') => { const el = document.createElement(tag); el.textContent = value; el.className = cls; parent.append(el); return el; };
-  const percent = r => r.score === null ? 'N/A' : r.percent.toFixed(2) + '%';
+  const percent = r => r.score === null ? 'N/A' : (Math.floor(r.percent * 10 + 0.5) / 10).toFixed(1) + '%';
   const chip = (parent, r) => text(parent, 'span', r.band || 'N/A', 'impact-band ' + (r.band?.toLowerCase() || ''));
   function persist() { try { localStorage.setItem(storageKey, JSON.stringify(state)); message.textContent = 'Saved.'; } catch { message.textContent = 'Export to keep your choices.'; } }
   function arrange(panel) {
@@ -145,40 +138,44 @@
     const focusID = document.activeElement?.id;
     const result = compute({...original, ...state}), scores = document.getElementById('scores');
     if (scores) {
-      scores.replaceChildren(); const verdict = text(scores, 'div', '', 'verdict');
-      text(verdict, 'h2', result.risk.withheld ? `Architecture health · withheld (${result.risk.withheld})` : `Architecture health · ${result.risk.health}/100`);
+      scores.replaceChildren(); const verdict = text(scores, 'div', '', 'verdict'), N = result.total;
+      text(verdict, 'h2', result.risk.withheld ? `Risk withheld · ${result.risk.withheld}` : `Risk ${percent(result.risk)} · ${result.risk.involved_modules}/${N} modules involved`);
       chip(verdict, result.risk).setAttribute('aria-label', 'Overall risk band');
       const recalculate = text(verdict, 'button', 'Recalculate'); recalculate.type = 'button'; recalculate.id = 'audit-recalculate'; recalculate.dataset.recalculate = ''; recalculate.addEventListener('click', () => { persist(); render(); });
       text(verdict, 'span', result.risk.coverage_complete ? 'Coverage: complete' : 'Coverage: partial', 'fact-chip');
-      const facts = text(scores, 'div', '', 'score-overall'); text(facts, 'span', `Risk ${percent(result.risk)}`); text(facts, 'span', `Observed ${result.observed_risk.health ?? 'N/A'}/100`);
-      text(facts, 'span', `${result.total}/${result.inventory_total} modules in scope`); text(facts, 'span', original.module_weights ? 'Weighted by code mass' : 'Equal module weights');
-      if (result.risk.assessed_mass_min !== null) text(facts, 'span', `Assessed mass ≥ ${(result.risk.assessed_mass_min * 100).toFixed(0)}%`);
-      text(facts, 'span', result.structural.screened ? `Structural candidates ${result.structural.candidates - result.structural.unresolved.length}/${result.structural.candidates} resolved` : 'Structure scan missing');
+      const facts = text(scores, 'div', '', 'score-overall');
+      for (const label of [`Defects in ${result.rootCostModules ?? '?'}/${N} modules`, `Before review choices ${percent(result.observed_risk)}`, `${N}/${result.inventory_total} modules in scope`,
+        result.risk.coverage_min !== null ? `Lowest principle classification ${Math.floor(result.risk.coverage_min * 100)}%` : 'Classification unknown',
+        result.structural.screened ? `Structural candidates ${result.structural.candidates - result.structural.unresolved.length}/${result.structural.candidates} resolved` : 'Structure scan missing']) text(facts, 'span', label);
       const st = result.structure;
-      if (st) { const structure = text(scores, 'div', '', 'score-structure'); for (const label of [`Effective modules ${st.effective_modules}`, `Largest ${st.largest_module} ${(st.largest_share * 100).toFixed(0)}%`, `Change reaches ${(st.mass_propagation_cost * 100).toFixed(0)}% of code`, `Cycles ${st.cycles}`]) text(structure, 'span', label); }
+      if (st) { const structure = text(scores, 'div', '', 'score-structure'); for (const label of ['Structure scan:', `effective modules ${st.effective_modules}`, `largest ${st.largest_module} holds ${(st.largest_share * 100).toFixed(0)}% of code`, `a change reaches ${(st.mass_propagation_cost * 100).toFixed(0)}% of code`, `cycles ${st.cycles}`]) text(structure, 'span', label); }
       const top = result.ranking.filter(r => r.open).slice(0, 5);
       if (top.length) {
-        const list = text(scores, 'ol', '', 'top-problems'); list.setAttribute('aria-label', 'Top problems by impact');
-        for (const r of top) { const item = text(list, 'li', ''); const link = text(item, 'a', document.getElementById(r.id + '-title')?.textContent || document.getElementById(r.id)?.querySelector('h3')?.textContent || r.id); link.href = '#' + r.id; text(item, 'span', `${r.principles?.join(', ') || ''}${r.structural ? ' · structural' : ''} · ${r.severity} · ${(r.impact * 100).toFixed(1)}% risk`, 'score-sub'); }
+        text(scores, 'h3', 'Top problems by risk', 'top-problems-title');
+        const list = text(scores, 'ol', '', 'top-problems'); list.setAttribute('aria-label', 'Top problems by risk');
+        for (const r of top) {
+          const item = text(list, 'li', ''); const link = text(item, 'a', document.getElementById(r.id + '-title')?.textContent || document.getElementById(r.id)?.querySelector('h3')?.textContent || r.id); link.href = '#' + r.id;
+          text(item, 'span', `${r.principles.join(', ')}${r.structural ? ' · structural' : ''} · ${r.severity} · defects in ${r.defect_modules} ${r.defect_modules === 1 ? 'module' : 'modules'} · ${r.involved_modules}/${N} involved · ${percent({score: r.impact, percent: r.impact * 100})} risk`, 'score-sub');
+        }
       }
-      const head = text(scores, 'div', '', 'score-head'); for (const label of ['Principle', 'Root cost', 'Affected', 'Risk / observed', 'Local status']) text(head, 'span', label);
+      const head = text(scores, 'div', '', 'score-head'); for (const label of ['Principle', 'Defect modules', 'Involved', 'Risk', 'Local status']) text(head, 'span', label);
       for (const p of result.principles) {
         const source = original.principles.find(s => s.id === p.id), row = text(scores, 'div', '', 'score-row');
         const link = text(row, 'a', p.id + ' ' + (source.title || ''), 'score-name'); link.href = '#' + p.id.toLowerCase();
         if (p.gate === 'skipped') { for (let i = 0; i < 3; i++) text(row, 'div', '—'); text(row, 'div', 'SKIPPED'); continue; }
         text(link, 'span', p.external ? 'Rule families' : `${p.counts.issue + p.counts.clear}/${p.applicable} classified`, 'score-sub');
-        text(row, 'div', p.external ? '—' : String(p.rootCostModules)); text(row, 'div', p.external ? '—' : `${p.affectedModules ?? '?'}/${result.total}`);
+        text(row, 'div', p.external ? '—' : `${p.rootCostModules}/${N}`); text(row, 'div', p.external ? '—' : `${p.risk.involved_modules ?? '?'}/${N}`);
         const value = text(row, 'div', ''); chip(value, p.risk); text(value, 'strong', p.external ? `${p.external_enforcement.failed}/${p.external_enforcement.evaluated_families} failed checks` : percent(p.risk));
-        if (!p.external) text(value, 'span', 'Observed ' + percent(p.observed_risk), 'score-sub'); text(text(row, 'div', ''), 'span', p.gate.toUpperCase(), 'gate ' + p.gate);
+        if (!p.external) text(value, 'span', 'Before review ' + percent(p.observed_risk), 'score-sub'); text(text(row, 'div', ''), 'span', p.gate.toUpperCase(), 'gate ' + p.gate);
       }
-      const key = text(scores, 'div', '', 'score-key score-policy'); text(key, 'span', 'Health = 100 × (1 − risk). Risk: code mass exposed to open defects; strongest consequence per dimension, combined across dimensions.');
+      const key = text(scores, 'div', '', 'score-key score-policy'); text(key, 'span', 'Risk = severity-weighted share of modules that own or directly import an open defect (low 0.1 · medium 0.4 · high and critical 1.0). Each module counts once, at its strongest open defect. LOW < 3% · MEDIUM < 10% · HIGH ≥ 10%.');
     }
     for (const p of result.principles) {
       if (p.gate === 'skipped') continue;
       const panel = document.getElementById(p.id.toLowerCase());
       let summary = panel?.querySelector(':scope>.principle-score');
       if (panel && !summary) { summary = document.createElement('div'); summary.className = 'principle-score'; panel.querySelector('.principle-heading')?.after(summary); }
-      if (summary) { summary.replaceChildren(); text(summary, 'span', p.external ? 'External checks' : `Root cost ${p.rootCostModules} · Affected ${p.affectedModules ?? '?'}/${result.total}`); text(summary, 'strong', 'Risk ' + percent(p.risk)); text(summary, 'span', 'Observed ' + percent(p.observed_risk)); text(summary, 'span', p.gate.toUpperCase(), 'gate ' + p.gate); const handled = p.accepted_findings + p.resolved_findings + p.invalid_findings; if (handled) text(summary, 'span', `${handled} handled`); }
+      if (summary) { summary.replaceChildren(); text(summary, 'span', p.external ? 'External checks' : `Defects in ${p.rootCostModules}/${result.total} · ${p.risk.involved_modules ?? '?'}/${result.total} involved`); text(summary, 'strong', 'Risk ' + percent(p.risk)); text(summary, 'span', 'Before review ' + percent(p.observed_risk)); text(summary, 'span', p.gate.toUpperCase(), 'gate ' + p.gate); const handled = p.accepted_findings + p.resolved_findings + p.invalid_findings; if (handled) text(summary, 'span', `${handled} handled`); }
       const nav = document.querySelector(`[data-principle-link][href="#${p.id.toLowerCase()}"] .nav-result`); if (nav) nav.textContent = p.external ? `${p.external_enforcement.failed}/${p.external_enforcement.evaluated_families} checks` : percent(p.risk);
       for (const f of p.findings) {
         const issue = document.getElementById(f.id); if (!issue || issue.closest('.principle') !== panel) continue;
@@ -189,12 +186,12 @@
         shell.classList.toggle('issue-shell--small', f.presentation !== 'issue');
         const metrics = issue.querySelector('.finding-metrics');
         if (metrics) { metrics.replaceChildren(); text(metrics, 'span', !f.in_scope ? 'Out of scope' : f.decision.status !== 'open' ? statusLabels[f.decision.status] : f.presentation === 'suggestion' ? 'Suggestion · unscored' : f.presentation === 'tiny' ? 'Tiny issue' : 'Open');
-          if (f.presentation === 'issue') { text(metrics, 'span', p.external ? 'External checks' : `Root cost ${f.rootCostModules} · Affected ${f.affectedModules ?? '?'}/${result.total}`); chip(metrics, f.risk); }
+          if (f.presentation === 'issue') { text(metrics, 'span', p.external ? 'External checks' : `Defects in ${f.rootCostModules}/${result.total} · ${f.risk.involved_modules ?? '?'}/${result.total} involved`); chip(metrics, f.risk); }
           text(metrics, 'strong', 'Risk ' + percent(f.risk)); }
         if (!p.external) {
           let inventory = issue.querySelector('.counted-modules'); if (!inventory) { inventory = document.createElement('details'); inventory.className = 'counted-modules'; (issue.querySelector('.issue-body') || issue).prepend(inventory); }
-          const wasOpen = inventory.open; inventory.replaceChildren(); text(inventory, 'summary', `Modules · ${f.rootCostModules} root cost · ${f.affectedModules ?? '?'} affected`);
-          const columns = text(inventory, 'div', '', 'module-lists'); for (const [label, ids] of [['Root cost', f.rootCostModuleIDs], ['Affected', f.affectedModuleIDs]]) { const column = text(columns, 'div', ''); text(column, 'h4', `${label} · ${ids?.length ?? '?'}`); const list = text(column, 'ul', ''); for (const id of ids || []) text(text(list, 'li', ''), 'code', id); } inventory.open = wasOpen;
+          const wasOpen = inventory.open; inventory.replaceChildren(); text(inventory, 'summary', `Modules · ${f.rootCostModules} with the defect · ${f.affectedModules ?? '?'} importing them`);
+          const columns = text(inventory, 'div', '', 'module-lists'); for (const [label, ids] of [['Defect modules', f.rootCostModuleIDs], ['Importing modules', f.affectedModuleIDs]]) { const column = text(columns, 'div', ''); text(column, 'h4', `${label} · ${ids?.length ?? '?'}`); const list = text(column, 'ul', ''); for (const id of ids || []) text(text(list, 'li', ''), 'code', id); } inventory.open = wasOpen;
         }
         let editor = shell.querySelector(':scope>.decision-controls');
         if (!editor) {

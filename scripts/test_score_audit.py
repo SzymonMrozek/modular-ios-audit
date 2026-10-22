@@ -51,10 +51,10 @@ def candidate(cid, modules, archetype='contamination-hub', floor='high'):
     return {'id': cid, 'archetype': archetype, 'modules': modules, 'severity_floor': floor, 'trigger': 'scan', 'metrics': {}}
 
 
-def weighted(masses, severity='high'):
-    modules = [f'M{i}' for i in range(len(masses))]
-    d = {'modules': modules, 'module_weights': dict(zip(modules, masses)), 'consumer_graph_complete': True,
-         'consumer_graph_provenance': {'source': 'fixture'}, 'consumers': {m: [] for m in modules}, 'principles': []}
+def plain(n=2, severity='high'):
+    modules = [f'M{i}' for i in range(n)]
+    d = {'modules': modules, 'consumer_graph_complete': True, 'consumer_graph_provenance': {'source': 'fixture'},
+         'consumers': {m: [] for m in modules}, 'principles': []}
     return principle(d, 'P1', [finding('owner', ['M0'], severity)])
 
 
@@ -94,29 +94,32 @@ def scenarios():
 class AuditTests(unittest.TestCase):
     def test_defect_owner_counts_even_without_consumers(self):
         s = score(sample(severity='high', affected=0))
-        self.assertAlmostEqual(s['risk']['score'], .4 / 100); self.assertEqual(s['principles'][0]['affectedModules'], 0)
+        self.assertAlmostEqual(s['risk']['score'], 1 / 100); self.assertEqual(s['principles'][0]['affectedModules'], 0)
 
-    def test_exposure_includes_root_and_direct_consumers(self):
+    def test_risk_is_the_weighted_share_of_involved_modules(self):
         s = score(sample(affected=20)); self.assertEqual(s['principles'][0]['affectedModules'], 20)
-        self.assertAlmostEqual(s['risk']['score'], .05 * 21 / 100); self.assertEqual(s['risk']['health'], 99)
+        self.assertAlmostEqual(s['risk']['score'], .1 * 21 / 100); self.assertEqual(s['risk']['involved_modules'], 21); self.assertEqual(s['risk']['band'], 'LOW')
+        s = score(sample(severity='medium', affected=33)); self.assertAlmostEqual(s['risk']['score'], .4 * 34 / 100); self.assertEqual(s['risk']['band'], 'HIGH')
 
-    def test_code_mass_drives_risk(self):
-        s = score(weighted([60, 10, 10, 10, 10])); self.assertAlmostEqual(s['risk']['score'], .24); self.assertEqual(s['weighting'], 'code-mass')
-        s = score(weighted([1, 10, 10, 10, 10])); self.assertLess(s['risk']['score'], .01)
+    def test_code_mass_does_not_weight_the_score(self):
+        d = sample(severity='medium', affected=5); base = score(d)['risk']['score']
+        d['module_weights'] = {m: 1000 if i == 0 else 1 for i, m in enumerate(d['modules'])}
+        self.assertEqual(score(d)['risk']['score'], base)
 
     def test_exact_bands(self):
-        for masses, expected in [([1, 4], 'LOW'), ([1, 3], 'MEDIUM'), ([5, 4], 'MEDIUM'), ([5, 3], 'HIGH')]:
-            self.assertEqual(score(weighted(masses))['risk']['band'], expected, masses)
+        for affected, expected in [(1, 'LOW'), (2, 'MEDIUM'), (8, 'MEDIUM'), (9, 'HIGH')]:
+            self.assertEqual(score(sample(severity='high', affected=affected))['risk']['band'], expected, affected)
 
-    def test_max_within_principle_and_compound_across_principles(self):
-        d = weighted([1, 1]); d['principles'][0]['findings'].append(finding('second', ['M0'], 'medium'))
-        self.assertAlmostEqual(score(d)['risk']['score'], .4 / 2)
-        principle(d, 'P3', [finding('p3', ['M0'], 'medium')])
-        s = score(d); self.assertAlmostEqual(s['risk']['score'], (1 - .6 * .9) / 2); self.assertAlmostEqual(s['principles'][0]['risk']['score'], .4 / 2); self.assertAlmostEqual(s['principles'][1]['risk']['score'], .1 / 2)
+    def test_each_module_counts_once_at_its_strongest_defect(self):
+        d = plain(); d['principles'][0]['findings'].append(finding('second', ['M0'], 'medium'))
+        self.assertAlmostEqual(score(d)['risk']['score'], 1 / 2)
+        principle(d, 'P3', [finding('p3', ['M0', 'M1'], 'medium')])
+        s = score(d); self.assertAlmostEqual(s['risk']['score'], (1 + .4) / 2); self.assertEqual(s['risk']['involved_modules'], 2)
+        self.assertAlmostEqual(s['principles'][0]['risk']['score'], 1 / 2); self.assertAlmostEqual(s['principles'][1]['risk']['score'], .4)
 
     def test_cross_tagged_finding_counts_once(self):
-        d = weighted([1, 1]); same = copy.deepcopy(d['principles'][0]['findings'][0]); principle(d, 'P3', [same])
-        self.assertAlmostEqual(score(d)['risk']['score'], .4 / 2)
+        d = plain(); same = copy.deepcopy(d['principles'][0]['findings'][0]); principle(d, 'P3', [same])
+        self.assertAlmostEqual(score(d)['risk']['score'], 1 / 2)
 
     def test_unresolved_candidates_withhold_the_score_and_mark_their_principle(self):
         d = structural(sample(), [candidate('C-hub-1', ['Modules/M0'])], {}, [])
@@ -141,7 +144,7 @@ class AuditTests(unittest.TestCase):
 
     def test_implementation_only_defect_exposes_its_owner_only(self):
         d = sample(severity='high', affected=30); d['principles'][0]['findings'][0]['implementation_only'] = True
-        s = score(d); self.assertAlmostEqual(s['risk']['score'], .4 / 100); self.assertEqual(s['principles'][0]['affectedModules'], 0)
+        s = score(d); self.assertAlmostEqual(s['risk']['score'], 1 / 100); self.assertEqual(s['principles'][0]['affectedModules'], 0)
 
     def test_reject_invalid_structural_records(self):
         bad = []
@@ -152,26 +155,21 @@ class AuditTests(unittest.TestCase):
         for d in bad:
             with self.assertRaises(ValueError): score(d)
 
-    def test_module_weights_must_cover_inventory(self):
-        for weights in [{'M0': 1}, {'M0': -1, 'M1': 1}, {'M0': True, 'M1': 1}, {'M0': 0, 'M1': 0}]:
-            d = weighted([1, 1]); d['module_weights'] = weights
-            with self.assertRaises(ValueError): score(d)
-
     def test_no_reason_choices_and_reopen(self):
         for status in ['resolved', 'invalid', 'accepted', 'intended']:
             d = sample(severity='high'); d['decisions'] = {'unit-contract': {'status': status}}
-            s = score(d); self.assertEqual(s['risk']['score'], 0); self.assertAlmostEqual(s['observed_risk']['score'], .4 * 21 / 100); self.assertEqual(s['rootCostModules'], 0)
+            s = score(d); self.assertEqual(s['risk']['score'], 0); self.assertAlmostEqual(s['observed_risk']['score'], 21 / 100); self.assertEqual(s['rootCostModules'], 0)
             self.assertEqual(s['principles'][0]['counts']['issue'], 1)
-            d['decisions']['unit-contract']['status'] = 'open'; self.assertAlmostEqual(score(d)['risk']['score'], .4 * 21 / 100)
+            d['decisions']['unit-contract']['status'] = 'open'; self.assertAlmostEqual(score(d)['risk']['score'], 21 / 100)
 
     def test_shared_root_still_has_open_issue(self):
         d = sample(); f = copy.deepcopy(d['principles'][0]['findings'][0]); f['id'] = 'second'; d['principles'][0]['findings'].append(f)
         d['decisions'] = {'unit-contract': {'status': 'accepted', 'reason': 'Choice', 'decided_by': 'user'}}
-        s = score(d); self.assertEqual(s['rootCostModules'], 1); self.assertAlmostEqual(s['risk']['score'], .0105)
+        s = score(d); self.assertEqual(s['rootCostModules'], 1); self.assertAlmostEqual(s['risk']['score'], .021)
 
     def test_scope_filters_roots_consumers_and_denominator(self):
         d = sample(n=10, affected=2); d['excluded_modules'] = [{'module': 'Modules/M1', 'reason': 'Scope'}]
-        s = score(d); self.assertEqual(s['total'], 9); self.assertEqual(s['affectedModules'], 1); self.assertAlmostEqual(s['risk']['score'], .05 * 2 / 9)
+        s = score(d); self.assertEqual(s['total'], 9); self.assertEqual(s['affectedModules'], 1); self.assertAlmostEqual(s['risk']['score'], .1 * 2 / 9)
         d['excluded_modules'].append({'module': 'Modules/M0', 'reason': 'Scope'}); s = score(d); self.assertEqual(s['risk']['score'], 0); self.assertFalse(s['principles'][0]['findings'][0]['in_scope'])
 
     def test_external_enforcement_stays_out_of_risk(self):
@@ -184,7 +182,7 @@ class AuditTests(unittest.TestCase):
     def test_unknown_is_not_zero(self):
         d = sample(); d['consumer_graph_complete'] = False; s = score(d); self.assertIsNone(s['risk']['score']); self.assertEqual(s['overall_gate'], 'incomplete')
         d = sample(); del d['principles'][0]['ledger']['Modules/M99']; s = score(d); self.assertEqual(s['overall_gate'], 'pass'); self.assertFalse(s['risk']['coverage_complete'])
-        self.assertAlmostEqual(s['risk']['assessed_mass_min'], .99)
+        self.assertAlmostEqual(s['risk']['coverage_min'], .99)
 
     def test_unscreened_audit_is_flagged(self):
         s = score(sample()); self.assertFalse(s['structural']['screened'])
@@ -204,24 +202,24 @@ class AuditTests(unittest.TestCase):
         for d in bad:
             with self.assertRaises(ValueError): score(d)
 
-    def test_tiny_is_strictly_under_one_percent_and_stable_after_review(self):
-        for severity, count, expected in [('high', 1, 'tiny'), ('high', 2, 'issue'), ('low', 18, 'tiny'), ('low', 19, 'issue')]:
+    def test_tiny_is_strictly_under_two_percent_and_never_high(self):
+        for severity, count, expected in [('medium', 3, 'tiny'), ('medium', 4, 'issue'), ('low', 18, 'tiny'), ('low', 19, 'issue'), ('high', 0, 'issue')]:
             d = sample(severity=severity, affected=count); s = score(d); self.assertEqual(s['principles'][0]['findings'][0]['presentation'], expected, (severity, count))
             d['decisions'] = {'unit-contract': {'status': 'resolved'}}; s = score(d); self.assertEqual(s['risk']['score'], 0); self.assertEqual(s['principles'][0]['findings'][0]['presentation'], expected)
         d = sample(); d['consumer_graph_complete'] = False; self.assertEqual(score(d)['principles'][0]['findings'][0]['presentation'], 'issue')
 
     def test_messy_structure_scores_worse_than_clean_structure(self):
-        clean = principle({'modules': [f'M{i}' for i in range(20)], 'module_weights': {f'M{i}': 5 for i in range(20)}, 'consumer_graph_complete': True,
+        clean = principle({'modules': [f'M{i}' for i in range(20)], 'consumer_graph_complete': True,
                            'consumer_graph_provenance': {'source': 'fixture'}, 'consumers': {f'M{i}': [] for i in range(20)}, 'principles': []},
-                          'P2', [finding(f'p2-{i}', [f'M{i}'], 'medium') for i in range(4)])
-        messy = {'modules': ['App', 'Core', 'Feature'], 'module_weights': {'App': 70, 'Core': 20, 'Feature': 10}, 'consumer_graph_complete': True,
+                          'P2', [finding(f'p2-{i}', [f'M{i}'], 'low') for i in range(2)])
+        messy = {'modules': ['App', 'Core', 'Feature'], 'consumer_graph_complete': True,
                  'consumer_graph_provenance': {'source': 'fixture'}, 'consumers': {'App': [], 'Core': ['App', 'Feature'], 'Feature': ['App']}, 'principles': []}
         messy = structural(principle(messy, 'P2'), [candidate('C-mono', ['App'], 'monolithic-module'), candidate('C-hub', ['Core'])],
                            {'C-mono': {'status': 'confirmed', 'finding': 'p1-mono'}, 'C-hub': {'status': 'confirmed', 'finding': 'p1-hub'}},
                            [finding('p1-mono', ['App'], 'high', archetype='monolithic-module', candidate_ids=['C-mono']),
                             finding('p1-hub', ['Core'], 'high', archetype='contamination-hub', candidate_ids=['C-hub'])])
-        self.assertGreater(score(clean)['risk']['health'], 90); self.assertLess(score(messy)['risk']['health'], 70)
-        self.assertEqual(score(messy)['ranking'][0]['id'], 'p1-hub')
+        self.assertEqual(score(clean)['risk']['band'], 'LOW'); self.assertEqual(score(messy)['risk']['band'], 'HIGH')
+        top = score(messy)['ranking'][0]; self.assertEqual((top['id'], top['defect_modules'], top['involved_modules']), ('p1-hub', 1, 3))
 
     def test_utf8_cli_input_and_output(self):
         data = sample(); data['principles'][0]['findings'][0]['severity_reason'] = 'Unité: 1 → 100%'
@@ -236,7 +234,7 @@ class AuditTests(unittest.TestCase):
         d = sample(); d['principles'][0]['findings'][0]['severity_reason'] = '</script><script>alert(1)</script>'
         html = '<html><body><section class="scoreboard" id="scores"></section><section id="p2"><details id="unit-contract"><section id="unit-contract-fix"></section><details id="unit-contract-evidence"></details></details></section></body></html>'
         output = prepare(d, html); self.assertEqual(output.count('id="audit-data"'), 1); self.assertNotIn('</script><script>alert(1)</script>', output)
-        self.assertEqual(prepare(d, output), output); self.assertIn(identity(d), output); self.assertIn('Architecture health', output)
+        self.assertEqual(prepare(d, output), output); self.assertIn(identity(d), output); self.assertIn('Risk 2.1% · 21/100 modules involved', output)
         with self.assertRaises(ValueError): prepare(d, '<html><body></body></html>')
 
     @unittest.skipUnless(shutil.which('node'), 'Node unavailable; browser projection parity not run')
@@ -247,18 +245,18 @@ class AuditTests(unittest.TestCase):
         for data, js in zip(cases, browser):
             py = score(data); self.assertEqual(py['overall_gate'], js['overall_gate'])
             for field in ['risk', 'observed_risk']:
-                self.assertEqual(py[field]['band'], js[field]['band']); self.assertEqual(py[field]['health'], js[field]['health']); self.assertEqual(py[field]['withheld'], js[field]['withheld'])
+                self.assertEqual(py[field]['band'], js[field]['band']); self.assertEqual(py[field]['involved_modules'], js[field]['involved_modules']); self.assertEqual(py[field]['withheld'], js[field]['withheld'])
                 if py[field]['score'] is None: self.assertIsNone(js[field]['score'])
                 else: self.assertAlmostEqual(py[field]['score'], js[field]['score'])
-            self.assertEqual([r['id'] for r in py['ranking']], [r['id'] for r in js['ranking']])
+            self.assertEqual([(r['id'], r['defect_modules'], r['involved_modules']) for r in py['ranking']], [(r['id'], r['defect_modules'], r['involved_modules']) for r in js['ranking']])
             self.assertEqual(py['structural']['unresolved'], js['structural']['unresolved'])
             for p, j in zip(py['principles'], js['principles']):
                 self.assertEqual(p['gate'], j['gate'])
                 if p['gate'] == 'skipped': continue
                 for field in ['rootCostModules', 'affectedModules', 'rootCostModuleIDs', 'affectedModuleIDs', 'counts', 'accepted_findings', 'resolved_findings', 'invalid_findings']:
                     self.assertEqual(p[field], j[field], field)
-                if p['assessed_mass'] is None: self.assertIsNone(j['assessed_mass'])
-                else: self.assertAlmostEqual(p['assessed_mass'], j['assessed_mass'])
+                if p['coverage'] is None: self.assertIsNone(j['coverage'])
+                else: self.assertAlmostEqual(p['coverage'], j['coverage'])
                 for field in ['risk', 'observed_risk']:
                     self.assertEqual(p[field]['band'], j[field]['band'])
                     if p[field]['score'] is None: self.assertIsNone(j[field]['score'])

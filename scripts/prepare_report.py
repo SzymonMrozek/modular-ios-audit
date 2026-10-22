@@ -5,6 +5,7 @@ import hashlib
 import html
 from html.parser import HTMLParser
 import json
+import math
 from pathlib import Path
 import re
 import webbrowser
@@ -50,40 +51,55 @@ def identity(data):
 
 def snapshot(result, titles):
     def percent(value):
-        return 'N/A' if value['percent'] is None else f"{value['percent']:.2f}%"
+        return one_decimal(value['percent'])
     def badge(label, cls):
         return f'<span class="gate {html.escape(cls)}">{html.escape(label)}</span>'
+    total = result['total']
     rows = []
     for p in result['principles']:
         pid = p['id']
         if p['gate'] == 'skipped':
-            roots, affected, risk_label, coverage = '—', '—', 'Skipped', ''
+            roots, involved, risk_label, coverage = '—', '—', 'Skipped', ''
         elif p['impact']['scope'] == 'external-only':
-            roots, affected, risk_label, coverage = '—', '—', f"{p['external_enforcement']['failed']}/{p['external_enforcement']['evaluated_families']} families failed", 'External enforcement'
+            roots, involved, risk_label, coverage = '—', '—', f"{p['external_enforcement']['failed']}/{p['external_enforcement']['evaluated_families']} families failed", 'External enforcement'
         else:
-            roots = str(p['rootCostModules'])
-            affected = f"{p['affectedModules'] if p['affectedModules'] is not None else '?'}/{result['total']}"
+            roots = f"{p['rootCostModules']}/{total}"
+            involved = f"{p['risk']['involved_modules'] if p['risk']['involved_modules'] is not None else '?'}/{total}"
             risk_label = f"{percent(p['risk'])} · {p['risk']['band'] or 'N/A'}"
             coverage = f"{p['counts']['issue'] + p['counts']['clear']}/{p['applicable']} classified"
-        rows.append(f'<div class="score-row"><a class="score-name" href="#{pid.lower()}">{html.escape(pid + " " + titles.get(pid, ""))}<span class="score-sub">{coverage}</span></a><div>{roots}</div><div>{affected}</div><div>{risk_label}</div><div>{badge(p["gate"].upper(), p["gate"])}</div></div>')
-    overall_band = result['risk']['band'] or 'N/A'
-    band_chip = f'<span class="impact-band {overall_band.lower()}" aria-label="Overall risk band">{overall_band}</span>'
-    risk = result['risk']
-    headline = f'Architecture health · withheld ({html.escape(risk["withheld"])})' if risk['withheld'] else f'Architecture health · {risk["health"]}/100'
-    structural = result['structural']
-    facts = [f'Risk {percent(risk)}', f'Observed {result["observed_risk"]["health"] if result["observed_risk"]["health"] is not None else "N/A"}/100',
-             f'{result["total"]}/{result["inventory_total"]} modules in scope', 'Weighted by code mass' if result['weighting'] == 'code-mass' else 'Equal module weights',
+        rows.append(f'<div class="score-row"><a class="score-name" href="#{pid.lower()}">{html.escape(pid + " " + titles.get(pid, ""))}<span class="score-sub">{coverage}</span></a><div>{roots}</div><div>{involved}</div><div>{risk_label}</div><div>{badge(p["gate"].upper(), p["gate"])}</div></div>')
+    risk, observed, structural = result['risk'], result['observed_risk'], result['structural']
+    band = risk['band'] or 'N/A'
+    band_chip = f'<span class="impact-band {band.lower()}" aria-label="Overall risk band">{band}</span>'
+    headline = f'Risk withheld · {html.escape(risk["withheld"])}' if risk['withheld'] else f'Risk {percent(risk)} · {risk["involved_modules"]}/{total} modules involved'
+    facts = [f'Defects in {result["rootCostModules"] if result["rootCostModules"] is not None else "?"}/{total} modules',
+             f'Before review choices {percent(observed)}', f'{total}/{result["inventory_total"]} modules in scope',
+             f'Lowest principle classification {math.floor(risk["coverage_min"] * 100)}%' if risk['coverage_min'] is not None else 'Classification unknown',
              f'Structural candidates {structural["candidates"] - len(structural["unresolved"])}/{structural["candidates"]} resolved' if structural['screened'] else 'Structure scan missing']
     structure = result.get('structure')
-    structure_row = '' if not structure else '<div class="score-structure">' + ''.join(f'<span>{html.escape(label)}</span>' for label in (
-        f'Effective modules {structure["effective_modules"]}', f'Largest {structure["largest_module"]} {structure["largest_share"] * 100:.0f}%',
-        f'Change reaches {structure["mass_propagation_cost"] * 100:.0f}% of code', f'Cycles {structure["cycles"]}')) + '</div>'
+    structure_row = '' if not structure else '<div class="score-structure"><span>Structure scan:</span>' + ''.join(f'<span>{html.escape(label)}</span>' for label in (
+        f'effective modules {structure["effective_modules"]}', f'largest {structure["largest_module"]} holds {structure["largest_share"] * 100:.0f}% of code',
+        f'a change reaches {structure["mass_propagation_cost"] * 100:.0f}% of code', f'cycles {structure["cycles"]}')) + '</div>'
     top = [r for r in result['ranking'] if r['open']][:5]
-    problems = '' if not top else '<ol class="top-problems" aria-label="Top problems by impact">' + ''.join(
-        f'<li><a href="#{html.escape(r["id"])}">{html.escape(titles.get(r["id"], r["id"]))}</a><span class="score-sub">{", ".join(r["principles"])}{" · structural" if r["structural"] else ""} · {r["severity"]} · {r["impact"] * 100:.1f}% risk</span></li>' for r in top) + '</ol>'
+    problems = '' if not top else '<h3 class="top-problems-title">Top problems by risk</h3><ol class="top-problems" aria-label="Top problems by risk">' + ''.join(
+        f'<li><a href="#{html.escape(r["id"])}">{html.escape(titles.get(r["id"], r["id"]))}</a><span class="score-sub">{problem_facts(r, total)}</span></li>' for r in top) + '</ol>'
+    key = ('Risk = severity-weighted share of modules that own or directly import an open defect (low 0.1 · medium 0.4 · high and critical 1.0). '
+           'Each module counts once, at its strongest open defect. LOW < 3% · MEDIUM < 10% · HIGH ≥ 10%.')
     return (f'<section class="scoreboard" id="scores" data-overview><div class="verdict"><h2>{headline}</h2>{band_chip}<span class="fact-chip">Coverage: {"complete" if risk["coverage_complete"] else "partial"}</span></div>'
             f'<div class="score-overall">{"".join(f"<span>{html.escape(fact)}</span>" for fact in facts)}</div>{structure_row}{problems}'
-            f'<div class="score-head"><span>Principle</span><span>Root cost</span><span>Affected</span><span>Risk</span><span>Local status</span></div>{"".join(rows)}</section>')
+            f'<div class="score-head"><span>Principle</span><span>Defect modules</span><span>Involved</span><span>Risk</span><span>Local status</span></div>{"".join(rows)}'
+            f'<div class="score-key score-policy"><span>{html.escape(key)}</span></div></section>')
+
+
+def one_decimal(percent):
+    """Round half up to one decimal, matching the browser's display."""
+    return 'N/A' if percent is None else f'{math.floor(percent * 10 + 0.5) / 10:.1f}%'
+
+
+def problem_facts(r, total):
+    modules = 'module' if r['defect_modules'] == 1 else 'modules'
+    return html.escape(f'{", ".join(r["principles"])}{" · structural" if r["structural"] else ""} · {r["severity"]} · '
+                       f'defects in {r["defect_modules"]} {modules} · {r["involved_modules"]}/{total} involved · {one_decimal(r["impact"] * 100)} risk')
 
 
 def prepare(data, document):
@@ -114,8 +130,8 @@ def prepare(data, document):
         for f in p.get('findings', []):
             labels = {'open': 'Open', 'resolved': 'Resolved', 'invalid': 'Invalid for this repo', 'accepted': 'Acceptable for this project'}
             status = 'Out of scope' if not f['in_scope'] else labels[f['decision']['status']] if f['decision']['status'] != 'open' else 'Suggestion · unscored' if f['presentation'] == 'suggestion' else 'Tiny issue' if f['presentation'] == 'tiny' else 'Open'
-            location = 'External checks' if f['rootCostModules'] is None else f"Root cost {f['rootCostModules']} · Affected {f['affectedModules'] if f['affectedModules'] is not None else '?'}/{result['total']}"
-            risk = 'N/A' if f['risk']['percent'] is None else f"{f['risk']['percent']:.2f}%"
+            location = 'External checks' if f['rootCostModules'] is None else f"Defects in {f['rootCostModules']}/{result['total']} · {f['risk']['involved_modules'] if f['risk']['involved_modules'] is not None else '?'}/{result['total']} involved"
+            risk = one_decimal(f['risk']['percent'])
             summary = f'<div class="finding-metrics"><span>{html.escape(status)}</span>'
             if f['presentation'] == 'issue':
                 summary += f'<span>{location}</span>'
@@ -132,7 +148,7 @@ def prepare(data, document):
         elif p['impact']['scope'] == 'external-only':
             label = f"{p['external_enforcement']['failed']}/{p['external_enforcement']['evaluated_families']}!"
         else:
-            label = 'N/A' if p['risk']['percent'] is None else f"{p['risk']['percent']:.2f}%"
+            label = one_decimal(p['risk']['percent'])
         pattern = r'(<a\b[^>]*href=["\']#' + p['id'].lower() + r'["\'][^>]*>[\s\S]*?<span\b[^>]*class=["\']nav-result["\'][^>]*>)[\s\S]*?(</span>)'
         document = re.sub(pattern, lambda m: m[1] + label + m[2], document, count=1)
     document = scroll_tables(document)

@@ -5,17 +5,18 @@ from fractions import Fraction
 import json
 from pathlib import Path
 
-POLICY = 'structural-principles-v7'
+POLICY = 'module-share-v8'
 STATES = {'issue', 'clear', 'not-applicable', 'unassessed'}
-# Consequence weight = units / 20.
-UNITS = {'low': 1, 'medium': 2, 'high': 8, 'critical': 14}
+# Consequence weight = units / 10. Integer units keep Python and browser arithmetic exact.
+UNITS = {'low': 1, 'medium': 4, 'high': 10, 'critical': 10}
 SEVERITIES = set(UNITS)
 RANK = {'low': 0, 'medium': 1, 'high': 2, 'critical': 3}
 PRINCIPLES = {f'P{i}' for i in range(1, 9)}
 DECISIONS = {'open', 'resolved', 'invalid', 'accepted'}
+METHOD = 'severity-weighted share of modules that own or directly import an open defect'
 # Structure-scan archetypes and the principle whose evaluator confirms or dismisses them.
 OWNERS = {'monolithic-module': 'P1', 'contamination-hub': 'P1', 'mixed-concerns': 'P1', 'parallel-abstractions': 'P5', 'tangled-graph': 'P7'}
-MEDIUM_MIN, HIGH_MIN, TINY_MAX = Fraction(1, 10), Fraction(1, 4), Fraction(1, 100)
+MEDIUM_MIN, HIGH_MIN, TINY_MAX = Fraction(3, 100), Fraction(1, 10), Fraction(2, 100)
 
 
 def band(value):
@@ -25,7 +26,6 @@ def band(value):
 def numeric(value, **extra):
     return {'score': float(value) if value is not None else None,
             'percent': float(value * 100) if value is not None else None,
-            'health': None if value is None else round(float((1 - value) * 100)),
             'band': band(value), **extra}
 
 
@@ -35,7 +35,7 @@ def score(data):
         raise ValueError('Module inventory must be nonempty and unique')
     inventory = set(modules)
     if 'thresholds' in data:
-        raise ValueError('Policy fixes 10%/25% bands; remove custom or legacy thresholds')
+        raise ValueError('Policy fixes 3%/10% bands; remove custom or legacy thresholds')
     exclusions = data.get('excluded_modules', [])
     excluded = set()
     for row in exclusions:
@@ -52,16 +52,7 @@ def score(data):
     provenance = data.get('consumer_graph_provenance', {})
     authority = isinstance(provenance, dict) and any(isinstance(provenance.get(k), str) and provenance[k].strip() for k in ('source', 'authority'))
     complete = eligible <= set(consumers) and data.get('consumer_graph_complete') is True and bool(authority)
-    raw_weights = data.get('module_weights')
-    if raw_weights is not None:
-        if not isinstance(raw_weights, dict) or set(raw_weights) != inventory or any(not isinstance(v, int) or isinstance(v, bool) or v < 0 for v in raw_weights.values()):
-            raise ValueError('module_weights must give a nonnegative integer code mass for every inventoried module')
-        weights = {m: raw_weights[m] for m in eligible}
-        if eligible and not sum(weights.values()):
-            raise ValueError('Eligible modules need nonzero total code mass')
-    else:
-        weights = {m: 1 for m in eligible}
-    mass_total = sum(weights.values())
+    total = len(eligible)
     decisions = {}
     for fid, original in data.get('decisions', {}).items():
         decision = dict(original)
@@ -92,30 +83,24 @@ def score(data):
         available = complete and not external and bool(eligible)
         affected = sorted(set().union(*(set(consumers[r]) & eligible for r in spreading))) if available else None
         exposed = set(roots) | set(affected) if available else None
-        reach = Fraction(sum(weights[m] for m in exposed), mass_total) if available else None
+        reach = Fraction(len(exposed), total) if available else None
         return {'rootCostModules': None if external else len(roots), 'rootCostModuleIDs': roots,
                 'affectedModules': len(affected) if available else None, 'affectedModuleIDs': affected,
                 'impact': numeric(reach, scope='external-only' if external else 'module', total_modules=len(eligible),
                     exposed_modules=len(exposed) if exposed is not None else None, graph_inventory_complete=complete,
                     missing_root_graph=[r for r in roots if r not in consumers],
-                    meaning='Code mass owning or directly importing the defect; not consequence or architecture health')}
+                    meaning='Share of modules owning or directly importing the defect, before severity')}
 
     def risk(findings, external=False):
-        """Max consequence within each principle, noisy-OR across principles, mass-weighted."""
+        """Each involved module counts once, at the strongest open consequence that reaches it; divided by the module count."""
         if external or not eligible or not complete:
-            return numeric(None, method='mass-weighted exposure; max per principle, combined across principles')
+            return numeric(None, units=None, involved_modules=None, method=METHOD)
         values = {}
-        for f, pid in findings:
+        for f, _ in findings:
             for module in exposure(root_ids(f), f.get('implementation_only') is True):
-                row = values.setdefault(module, {})
-                row[pid] = max(row.get(pid, 0), UNITS[f['severity']])
-        total = Fraction()
-        for module, row in values.items():
-            clean = Fraction(1)
-            for units in row.values():
-                clean *= 1 - Fraction(units, 20)
-            total += weights[module] * (1 - clean)
-        return numeric(total / mass_total, method='mass-weighted exposure; max per principle, combined across principles')
+                values[module] = max(values.get(module, 0), UNITS[f['severity']])
+        units = sum(values.values())
+        return numeric(Fraction(units, 10 * total), units=units, involved_modules=len(values), method=METHOD)
 
     structural = data.get('structural')
     candidates, resolutions = {}, {}
@@ -195,13 +180,13 @@ def score(data):
             active = in_scope and kind == 'issue' and decision['status'] == 'open'
             implementation_only = f.get('implementation_only') is True
             original_risk = risk([(f, pid)] if kind == 'issue' and in_scope else [], external)
-            tiny = original_risk['score'] is not None and original_risk['score'] < TINY_MAX
+            tiny = original_risk['score'] is not None and Fraction(original_risk['units'], 10 * total) < TINY_MAX and f['severity'] in ('low', 'medium')
             presentation = 'suggestion' if kind == 'suggestion' else 'tiny' if tiny else 'issue'
             rows.append({'id': fid, 'kind': kind, 'presentation': presentation, 'severity': f['severity'], 'severity_reason': f['severity_reason'],
                          'structural': bool(linked), 'archetype': f.get('archetype'), 'candidate_ids': linked, 'severity_floor': floor,
                          'implementation_only': implementation_only, 'decision': decision, 'in_scope': in_scope, 'active': active,
                          'observed': metrics(roots if in_scope and kind == 'issue' else [], external, implementation_only),
-                         'consequence_weight': UNITS[f['severity']] / 20 if kind == 'issue' else 0,
+                         'consequence_weight': UNITS[f['severity']] / 10 if kind == 'issue' else 0,
                          **metrics(roots if active else [], external, implementation_only), 'risk': risk([(f, pid)] if active else [], external),
                          'observed_risk': original_risk})
         external = p.get('scoring_scope') == 'external-only' or bool(findings) and all(not root_ids(f) for f in findings)
@@ -214,8 +199,6 @@ def score(data):
             raise ValueError('Issue ledger must equal evidenced issue-owner union; suggestions are not defects: ' + pid)
         counts = {state: sum(ledger.get(m, {}).get('status', 'unassessed') == state for m in eligible) for state in sorted(STATES)}
         applicable = len(eligible) - counts['not-applicable']
-        applicable_mass = sum(weights[m] for m in eligible if ledger.get(m, {}).get('status') != 'not-applicable')
-        assessed_mass = sum(weights[m] for m in eligible if ledger.get(m, {}).get('status') in ('issue', 'clear'))
         hard = p.get('hard_gates', [])
         if any(not all(row.get(k) for k in ('id', 'reason', 'evidence')) for row in hard):
             raise ValueError('Hard gate requires id, reason and evidence')
@@ -245,7 +228,6 @@ def score(data):
         results.append({'id': pid, **metrics(open_roots, external, spreading=spread(open_findings)), 'observed': metrics(observed_roots, external, spreading=observed_spread),
                         'risk': current_risk, 'observed_risk': observed_risk, 'total': len(eligible), 'counts': counts,
                         'applicable': applicable, 'coverage': (counts['issue'] + counts['clear']) / applicable if applicable else None,
-                        'assessed_mass': float(Fraction(assessed_mass, applicable_mass)) if applicable_mass else None,
                         'accepted_findings': sum(f['kind'] == 'issue' and f['in_scope'] and f['decision']['status'] == 'accepted' for f in rows),
                         'resolved_findings': sum(f['kind'] == 'issue' and f['in_scope'] and f['decision']['status'] == 'resolved' for f in rows),
                         'invalid_findings': sum(f['kind'] == 'issue' and f['in_scope'] and f['decision']['status'] == 'invalid' for f in rows),
@@ -270,17 +252,18 @@ def score(data):
         known = all(p[field]['score'] is not None for p in included)
         withheld = 'structural candidates unresolved' if unresolved else None if known else 'unknown principle risk'
         if withheld:
-            value = numeric(None, method=value['method'])
+            value = numeric(None, units=None, involved_modules=None, method=value['method'])
         return {**value, 'withheld': withheld, 'included_principles': [p['id'] for p in included],
                 'coverage_complete': not unresolved and all(not p['counts']['unassessed'] and not p['check_unknowns'] for p in included),
-                'assessed_mass_min': min((p['assessed_mass'] for p in included if p['assessed_mass'] is not None), default=None)}
+                'coverage_min': min((p['coverage'] for p in included if p['coverage'] is not None), default=None)}
     adjusted, observed = overall(all_open, 'risk'), overall(all_observed, 'observed_risk')
     ranked = []
     for p in results:
         for f in p.get('findings', []):
             if f['kind'] == 'issue' and f['in_scope'] and f['observed_risk']['score'] is not None and f['id'] not in {r['id'] for r in ranked}:
                 ranked.append({'id': f['id'], 'principles': finding_principles[f['id']], 'structural': f['structural'], 'severity': f['severity'],
-                               'impact': f['observed_risk']['score'], 'open': f['active']})
+                               'impact': f['observed_risk']['score'], 'defect_modules': f['observed']['rootCostModules'],
+                               'involved_modules': f['observed_risk']['involved_modules'], 'open': f['active']})
     ranked.sort(key=lambda r: (-r['impact'], not r['structural'], -RANK[r['severity']], r['id']))
     gates = {p['gate'] for p in results}
     legacy = ('skipped' if gates == {'skipped'} else 'not-applicable' if gates <= {'skipped', 'not-applicable'} else
@@ -289,8 +272,7 @@ def score(data):
     external_only = all(p.get('impact', {}).get('scope') == 'external-only' for p in results if p['gate'] != 'skipped') and gates != {'skipped'}
     structure = data.get('structure', {})
     return {'policy': POLICY, 'thresholds': {'medium_min': float(MEDIUM_MIN), 'high_min': float(HIGH_MIN), 'tiny_max': float(TINY_MAX)},
-            'consequence_weights': {k: v / 20 for k, v in UNITS.items()}, 'overall_gate': legacy,
-            'weighting': 'code-mass' if raw_weights is not None else 'equal',
+            'consequence_weights': {k: v / 10 for k, v in UNITS.items()}, 'overall_gate': legacy,
             'scope': 'full' if seen == PRINCIPLES and 'skipped' not in gates else 'partial',
             'inventory_total': len(modules), 'total': len(eligible), 'excluded_modules': exclusions,
             'decisions': decisions, **metrics(set().union(*(set(root_ids(f)) for f, _ in all_open)), external_only, spreading=spread(all_open)),
