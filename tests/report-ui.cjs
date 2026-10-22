@@ -26,7 +26,7 @@ fs.mkdirSync(outputs, { recursive: true });
     assert.equal(await page.locator('[aria-label="Overall risk band"]').innerText(), 'MEDIUM');
     assert.match(await page.locator('.verdict h2').innerText(), /Architecture health · 81\/100/);
     assert.equal(await page.locator('.top-problems li').count(), 2);
-    assert.equal(await page.locator('.top-problems li a').first().getAttribute('href'), '#s-f1');
+    assert.equal(await page.locator('.top-problems li a').first().getAttribute('href'), '#p1-f1');
     const diff = await page.locator('.diff-file').evaluateAll(files => files.map(f => f.outerHTML));
     assert(diff.length > 0);
     const snapshot = await page.locator('.diff-file').evaluateAll(files => files.flatMap(file => {

@@ -1,24 +1,31 @@
 # P1 — One clear responsibility
 
-Core issue: a module boundary combines independently changing responsibilities or splits one responsibility so its decisions must be maintained across owners. Evaluate cohesion by the capability, policy or invariant delivered and the consumers/reasons for change, not by technical labels.
+Core purpose: **every independently usable component or capability is its own importable module.** A module earns a shared boundary only when what it exports belongs together. When a module exposes components side by side that are not tied together by a common interface or API, recommend extracting each one into its own module. Default to splitting; the burden of proof is on keeping things together.
 
-Whole-target concentration (a monolithic app or module) and contamination hubs are screened by the systemic evaluator ([systemic.md](systemic.md)); P1 still evaluates responsibility boundaries inside and around them, and cross-tags rather than duplicates a confirmed S finding.
+Evaluate cohesion by the capability, policy or invariant delivered and by the consumers and reasons for change, not by technical labels. Inspect public APIs, internal collaboration, consumers, tests, resources and declared dependencies.
 
-Inspect public APIs, internal collaboration, consumers, tests, resources and declared dependencies. Different technical layers can serve one responsibility: search history may own values, persistence, behavior and tests; a feature may own views, state and internal navigation. A shared technical layer is not sufficient cohesion.
+## The cohesion test
 
-## Discover responsibilities
+List what the module exports (public types, functions, views, resources) and group them into component clusters: a component plus the private helpers and tightly collaborating types that serve it. Then test every pair of clusters. They belong in one module only if at least one holds:
 
-Trace public operations, state/data ownership, workflows and the rules they maintain. Look across product features, domain policies, infrastructure services, platform integrations and shared components; these are discovery lenses, not required module categories. Compare actual independent change scenarios and the types that must collaborate to preserve an invariant. A module name, folder, public-type count or UI layer does not define its responsibility.
+1. **Shared contract**: one cluster's public API takes, returns, extends or conforms to the other's types, or both implement or consume one protocol that the module owns.
+2. **Shared invariant**: they maintain one piece of state, policy or rule together, so changing one without the other would break it.
+3. **One feature**: they are the parts of one feature or workflow (screen, state, navigation, persistence) and are not consumed separately.
 
-Also inspect coherent rules fragmented across targets: if changing one owned decision requires synchronized edits in modules that each expose only a mechanical step, consider bringing those private collaborators together. Separate implementations, deployment targets and deliberately reusable contracts can justify a split. Do not treat every cross-module workflow as fragmentation.
+If none holds, the clusters are **independent**: each gets its own module. These do **not** make clusters cohesive: a shared label ("design system", "common", "core", "utils", "components", "extensions"), a shared directory, shared styling or tokens, shared third-party dependencies, the same author or team, or "they are all reusable". Shared foundations they both use become their own focused module that both depend on.
 
-## Parallel capabilities and multiple module roles
+Record a consumer usage matrix for each finding (**● used**, **— not used**, **? unverified**): which consumer imports which cluster. Disjoint usage strengthens the finding; universal co-usage does not rescue clusters that fail the test, it only lowers severity.
 
-Look for exported sibling components that are independently useful and do not collaborate to deliver one feature or invariant. This applies to services, storage, networking, formatting, controls and other components; do not frame the rule around a particular library name or a visual design system.
+## Typical shapes
 
-Trace contrasting consumers and component-specific behavior/dependencies. For example, a common library exports measurement formatting, attachment upload and retry policy. One caller needs formatting, another needs upload, and a background service needs retry. Coexistence in one directory is not the defect: the only importable boundary makes three independent capabilities one dependency node.
+- **Component umbrella.** A UI library exports buttons, cards, badges, a keyboard, a chart and a feature-specific card. Each component, and each token set (colors, spacing, typography, radius, sizes), becomes its own module. Feature-only components move into their owning feature. Shared artwork or strings go to a focused assets module or to their owner.
+- **Two roles.** Consumers import a target for foundational values (IDs, tokens, configuration) while it also exports higher-level components built on them. Foundations get their own module; components depend on it; foundation-only consumers stop importing the components.
+- **Utility grab bag.** Formatting, upload, retry and date helpers in one "Common" target. One module per capability.
+- **Monolithic module.** An app or feature target holding several features whose folders reference each other's concrete types. Each feature becomes a module behind an interface where others need it; the app target becomes composition only. Start with the most-referenced seam, but show the full target map.
+- **Contamination hub.** A target most of the code depends on that drags a dependency tree, vendors or UI plus data layers into every consumer. Split the stable core consumers need from the capabilities that drag dependencies.
+- **Mixed concerns.** UI code that talks to storage or the network directly in the same target. Separate the data or service capability from presentation; UI depends on an owner operation.
 
-A particularly clear case is a module with two roles: consumers import it for foundational values (for example IDs, colors or configuration values), while the same target exports independent higher-level components using those foundations. The foundational consumer must take the umbrella too. Separate these roles: independent components depend on a focused foundation boundary; foundations must not require the aggregate component module.
+The structure scan ([structure-scan.md](structure-scan.md)) flags monolithic modules, contamination hubs and mixed concerns as P1 candidates. Confirm each as a P1 finding (`candidate_ids`, `archetype`) at or above its severity floor, or dismiss it with counterevidence.
 
 ## Explain the consequence
 
@@ -34,18 +41,26 @@ After:  ReportScreen -> MeasurementFormatting -> CoreValues
         SyncJob     -> RetryPolicy
 ```
 
-In a module-granular dependency/validation system, an upload-only edit can invalidate the shared CommonKit node. Consumers of formatting or retry can consequently need revalidation because their dependency is that whole node. Splitting the graph lets the change follow AttachmentUpload's actual dependents. Inspect actual edges; distinguish this structural invalidation radius from measured compiler, cache or test-run behavior. Do not assert that every compiler rebuilds every dependent or every test must run without evidence of the toolchain's rules. No cache-tuning recommendation is needed to explain the consequence.
-
-Also explain public-contract, ownership or resource coupling where present. A past bug or measured build cost is not required for a structural finding, but "shared change surface" cannot replace the trace.
+In a module-granular dependency/validation system, an upload-only edit invalidates the shared CommonKit node, so consumers of formatting or retry need revalidation because their dependency is that whole node. Splitting lets the change follow AttachmentUpload's actual dependents. Inspect actual edges; distinguish this structural invalidation radius from measured compiler, cache or test-run behavior, and do not claim measured effects without evidence. Also explain public-contract, ownership, dependency or resource coupling where present. "Shared change surface" alone cannot replace the trace.
 
 ## Correction
 
-When independence is established, recommend a separately importable module for **each independent component/capability identified**, with its private collaborators, tests and resources. Do not dilute this to "extract one someday" or leave independent siblings in the umbrella without justification. A staged first step can be useful, but show the complete target boundary map.
+Show the **complete target map**: one module for each independent cluster and each foundation set, with its private collaborators, tests and resources, plus every consumer's new imports and dependencies. Do not stop at a partial split such as "foundation + everything else" or "extract the keyboard and keep a generic components module": a residual module of unrelated "generic" components fails the same test and must be split too. A staged migration order is useful, but the end state is fully split.
 
-Use the repository’s real boundary mechanism: an independently consumable and enforced target, product or submodule can provide this separation without a separate project/package or a particular generator. Verify that consumers can select the capability and its actual dependency boundary independently; a namespace or wrapper inside the same inseparable aggregate is not equivalent.
+Use the repository's real boundary mechanism (targets, products, packages, project modules). A namespace, folder or wrapper inside the same inseparable target is not a separate module. A standalone component does not need an Interface/Implementation pair; add one only where P5 justifies it.
 
-This is not one module per Swift type. Helpers and tightly collaborating types supporting one capability stay together. Common foundations may be their own focused module. A composition convenience aggregate can remain if justified and consumers can directly import narrower modules. A standalone component does not require an Interface/Implementation pair.
+Keep together what passes the cohesion test: helpers and collaborating types of one component, a view with its view model, a feature's screens and state. This is not one module per type. A convenience aggregate that re-exports the split modules may remain only if consumers can and do import the narrow modules directly; it is never a dependency of the components themselves.
 
-Show the proposed manifest/import graph and changed consumer import in code; see [fix-examples.md](fix-examples.md). Enumerate verified component clusters and actual consumers under each overbroad module problem, with nested evidence collapsed in visual reports.
+Show the proposed manifest/import graph and changed consumer imports in code; see [fix-examples.md](fix-examples.md). Enumerate every cluster and its actual consumers under the finding, with nested evidence collapsed in visual reports.
 
-Finding threshold: for an overbroad module, establish independently consumed capabilities, why they are parallel rather than one cohesive feature, and how their combined boundary broadens change/invalidation or ownership. For fragmentation, show a coherent owned decision spread across mechanical module boundaries, the synchronized changes it requires, and why those splits provide no independent capability, reuse or deployment boundary. Do not flag size, type count, multiple layers, private helpers or hypothetical splittability alone. Equally, do not dismiss clear independent components merely because they share styling or a broad label.
+## Fragmentation
+
+The inverse also violates P1: one owned decision spread across modules that each expose only a mechanical step, so every change needs synchronized edits. Show the decision, the synchronized changes and why the splits provide no independent capability, reuse or deployment boundary; recommend bringing the private collaborators together. Do not treat every cross-module workflow as fragmentation.
+
+## Severity and threshold
+
+- **medium** (default): a module exports independent clusters that consumers use separately, so a change in one reaches consumers of the others.
+- **low**: independent clusters that, today, every consumer imports together, or a single small stray component.
+- **high**: the bundle is a contamination hub or monolith at or above the scan's floor, or it forces broad coordinated change (e.g. most of the codebase imports it and it drags dependencies or layers along).
+
+Finding threshold: establish the clusters, show that the cohesion test fails for them, and trace one independent change through the graph. Size, type count, multiple layers or private helpers alone are not evidence, but neither are a broad label, shared styling or "it has always been one module" a reason to keep independent components together.

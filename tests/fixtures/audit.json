@@ -66,6 +66,73 @@
     "Modules/Feature63",
     "Modules/Feature64"
   ],
+  "module_weights": {
+    "App/ExampleApp": 30000,
+    "Modules/EditorFeature": 3000,
+    "Modules/PhotoEditor": 1200,
+    "Modules/VideoEditor": 1000,
+    "Modules/Feature04": 500,
+    "Modules/Feature05": 500,
+    "Modules/Feature06": 500,
+    "Modules/Feature07": 500,
+    "Modules/Feature08": 500,
+    "Modules/Feature09": 500,
+    "Modules/Feature10": 500,
+    "Modules/Feature11": 500,
+    "Modules/Feature12": 500,
+    "Modules/Feature13": 500,
+    "Modules/Feature14": 500,
+    "Modules/Feature15": 500,
+    "Modules/Feature16": 500,
+    "Modules/Feature17": 500,
+    "Modules/Feature18": 500,
+    "Modules/Feature19": 500,
+    "Modules/Feature20": 500,
+    "Modules/Feature21": 500,
+    "Modules/Feature22": 500,
+    "Modules/Feature23": 500,
+    "Modules/Feature24": 500,
+    "Modules/Feature25": 500,
+    "Modules/Feature26": 500,
+    "Modules/Feature27": 500,
+    "Modules/Feature28": 500,
+    "Modules/Feature29": 500,
+    "Modules/Feature30": 500,
+    "Modules/Feature31": 500,
+    "Modules/Feature32": 500,
+    "Modules/Feature33": 500,
+    "Modules/Feature34": 500,
+    "Modules/Feature35": 500,
+    "Modules/Feature36": 500,
+    "Modules/Feature37": 500,
+    "Modules/Feature38": 500,
+    "Modules/Feature39": 500,
+    "Modules/Feature40": 500,
+    "Modules/Feature41": 500,
+    "Modules/Feature42": 500,
+    "Modules/Feature43": 500,
+    "Modules/Feature44": 500,
+    "Modules/Feature45": 500,
+    "Modules/Feature46": 500,
+    "Modules/Feature47": 500,
+    "Modules/Feature48": 500,
+    "Modules/Feature49": 500,
+    "Modules/Feature50": 500,
+    "Modules/Feature51": 500,
+    "Modules/Feature52": 500,
+    "Modules/Feature53": 500,
+    "Modules/Feature54": 500,
+    "Modules/Feature55": 500,
+    "Modules/Feature56": 500,
+    "Modules/Feature57": 500,
+    "Modules/Feature58": 500,
+    "Modules/Feature59": 500,
+    "Modules/Feature60": 500,
+    "Modules/Feature61": 500,
+    "Modules/Feature62": 500,
+    "Modules/Feature63": 500,
+    "Modules/Feature64": 500
+  },
   "consumer_graph_complete": true,
   "consumer_graph_provenance": {
     "source": "Illustrative data; not a repository audit"
@@ -140,18 +207,82 @@
     "Modules/Feature63": [],
     "Modules/Feature64": []
   },
+  "structure": {
+    "policy": "structure-scan-v1",
+    "repository": {
+      "modules": 65,
+      "files": 812,
+      "loc": 65700,
+      "largest_module": "App/ExampleApp",
+      "largest_share": 0.4566,
+      "top3_share": 0.5205,
+      "concentration_hhi": 0.2148,
+      "effective_modules": 4.7,
+      "propagation_cost": 0.0161,
+      "mass_propagation_cost": 0.2141,
+      "cycles": 0,
+      "unowned_share": 0.4566
+    }
+  },
+  "structural": {
+    "candidates": [
+      {
+        "id": "C-monolithic-module-1",
+        "archetype": "monolithic-module",
+        "modules": [
+          "App/ExampleApp"
+        ],
+        "severity_floor": "high",
+        "trigger": "46% of first-party code in one target; folder reference density 62%",
+        "metrics": {
+          "mass_share": 0.457,
+          "divisibility": {
+            "groups": 6,
+            "density": 0.62
+          }
+        },
+        "principle": "P1"
+      },
+      {
+        "id": "C-contamination-hub-1",
+        "archetype": "contamination-hub",
+        "modules": [
+          "Modules/EditorFeature"
+        ],
+        "severity_floor": "medium",
+        "trigger": "31% of library code depends on EditorFeature; drags vendors, large",
+        "metrics": {
+          "library_dependents_mass_share": 0.31
+        },
+        "principle": "P1"
+      }
+    ],
+    "resolutions": {
+      "C-monolithic-module-1": {
+        "status": "confirmed",
+        "finding": "p1-f1"
+      },
+      "C-contamination-hub-1": {
+        "status": "dismissed",
+        "reason": "Illustrative: both vendors stay internal; consumers import only EditorFeature value types",
+        "evidence": [
+          "Illustrative: Modules/EditorFeature/Sources/Editor.swift:1"
+        ]
+      }
+    }
+  },
   "principles": [
     {
-      "id": "S",
-      "title": "Systemic structure",
+      "id": "P1",
+      "title": "One clear responsibility",
       "findings": [
         {
-          "id": "s-f1",
+          "id": "p1-f1",
           "title": "ExampleApp holds 46% of the code in one target",
           "kind": "issue",
           "archetype": "monolithic-module",
           "candidate_ids": [
-            "S-monolithic-module-1"
+            "C-monolithic-module-1"
           ],
           "severity": "high",
           "severity_reason": "Illustrative: six feature folders reference each other directly, so no feature can be extracted or validated alone",
@@ -164,7 +295,269 @@
             "Illustrative: App/ExampleApp/Library/LibraryViewController.swift:42 constructs EditorSession from Sharing"
           ]
         }
-      ]
+      ],
+      "ledger": {
+        "App/ExampleApp": {
+          "status": "issue",
+          "basis": "Illustrative: feature folders reference each other directly"
+        },
+        "Modules/EditorFeature": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/PhotoEditor": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/VideoEditor": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature04": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature05": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature06": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature07": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature08": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature09": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature10": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature11": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature12": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature13": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature14": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature15": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature16": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature17": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature18": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature19": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature20": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature21": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature22": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature23": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature24": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature25": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature26": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature27": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature28": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature29": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature30": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature31": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature32": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature33": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature34": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature35": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature36": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature37": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature38": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature39": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature40": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature41": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature42": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature43": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature44": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature45": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature46": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature47": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature48": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature49": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature50": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature51": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature52": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature53": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature54": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature55": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature56": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature57": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature58": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature59": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature60": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature61": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature62": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature63": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        },
+        "Modules/Feature64": {
+          "status": "clear",
+          "basis": "Illustrative: exported components and consumers inspected"
+        }
+      }
     },
     {
       "id": "P2",
@@ -534,134 +927,5 @@
         }
       ]
     }
-  ],
-  "module_weights": {
-    "App/ExampleApp": 30000,
-    "Modules/EditorFeature": 3000,
-    "Modules/PhotoEditor": 1200,
-    "Modules/VideoEditor": 1000,
-    "Modules/Feature04": 500,
-    "Modules/Feature05": 500,
-    "Modules/Feature06": 500,
-    "Modules/Feature07": 500,
-    "Modules/Feature08": 500,
-    "Modules/Feature09": 500,
-    "Modules/Feature10": 500,
-    "Modules/Feature11": 500,
-    "Modules/Feature12": 500,
-    "Modules/Feature13": 500,
-    "Modules/Feature14": 500,
-    "Modules/Feature15": 500,
-    "Modules/Feature16": 500,
-    "Modules/Feature17": 500,
-    "Modules/Feature18": 500,
-    "Modules/Feature19": 500,
-    "Modules/Feature20": 500,
-    "Modules/Feature21": 500,
-    "Modules/Feature22": 500,
-    "Modules/Feature23": 500,
-    "Modules/Feature24": 500,
-    "Modules/Feature25": 500,
-    "Modules/Feature26": 500,
-    "Modules/Feature27": 500,
-    "Modules/Feature28": 500,
-    "Modules/Feature29": 500,
-    "Modules/Feature30": 500,
-    "Modules/Feature31": 500,
-    "Modules/Feature32": 500,
-    "Modules/Feature33": 500,
-    "Modules/Feature34": 500,
-    "Modules/Feature35": 500,
-    "Modules/Feature36": 500,
-    "Modules/Feature37": 500,
-    "Modules/Feature38": 500,
-    "Modules/Feature39": 500,
-    "Modules/Feature40": 500,
-    "Modules/Feature41": 500,
-    "Modules/Feature42": 500,
-    "Modules/Feature43": 500,
-    "Modules/Feature44": 500,
-    "Modules/Feature45": 500,
-    "Modules/Feature46": 500,
-    "Modules/Feature47": 500,
-    "Modules/Feature48": 500,
-    "Modules/Feature49": 500,
-    "Modules/Feature50": 500,
-    "Modules/Feature51": 500,
-    "Modules/Feature52": 500,
-    "Modules/Feature53": 500,
-    "Modules/Feature54": 500,
-    "Modules/Feature55": 500,
-    "Modules/Feature56": 500,
-    "Modules/Feature57": 500,
-    "Modules/Feature58": 500,
-    "Modules/Feature59": 500,
-    "Modules/Feature60": 500,
-    "Modules/Feature61": 500,
-    "Modules/Feature62": 500,
-    "Modules/Feature63": 500,
-    "Modules/Feature64": 500
-  },
-  "structure": {
-    "policy": "structure-scan-v1",
-    "repository": {
-      "modules": 65,
-      "files": 812,
-      "loc": 65700,
-      "largest_module": "App/ExampleApp",
-      "largest_share": 0.4566,
-      "top3_share": 0.5205,
-      "concentration_hhi": 0.2148,
-      "effective_modules": 4.7,
-      "propagation_cost": 0.0161,
-      "mass_propagation_cost": 0.2141,
-      "cycles": 0,
-      "unowned_share": 0.4566
-    }
-  },
-  "systemic": {
-    "candidates": [
-      {
-        "id": "S-monolithic-module-1",
-        "archetype": "monolithic-module",
-        "modules": [
-          "App/ExampleApp"
-        ],
-        "severity_floor": "high",
-        "trigger": "46% of first-party code in one target; folder reference density 62%",
-        "metrics": {
-          "mass_share": 0.457,
-          "divisibility": {
-            "groups": 6,
-            "density": 0.62
-          }
-        }
-      },
-      {
-        "id": "S-contamination-hub-1",
-        "archetype": "contamination-hub",
-        "modules": [
-          "Modules/EditorFeature"
-        ],
-        "severity_floor": "medium",
-        "trigger": "31% of library code depends on EditorFeature; drags vendors, large",
-        "metrics": {
-          "library_dependents_mass_share": 0.31
-        }
-      }
-    ],
-    "resolutions": {
-      "S-monolithic-module-1": {
-        "status": "confirmed",
-        "finding": "s-f1"
-      },
-      "S-contamination-hub-1": {
-        "status": "dismissed",
-        "reason": "Illustrative: both vendors stay internal; consumers import only EditorFeature value types",
-        "evidence": [
-          "Illustrative: Modules/EditorFeature/Sources/Editor.swift:1"
-        ]
-      }
-    }
-  }
+  ]
 }

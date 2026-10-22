@@ -2,7 +2,7 @@
 
 Core issue: boundaries rely on convention while tooling permits undeclared or forbidden relationships.
 
-Cycles, propagation cost and Interface bypass are also screened structurally ([systemic.md](systemic.md)); P7 owns whether tooling enforces the intended graph.
+P7 also owns the **shape** of the graph: dependency cycles, high propagation cost (a change reaches a large share of the code) and library imports that bypass an Interface target. The structure scan flags these as P7 candidates ([structure-scan.md](structure-scan.md)); confirm or dismiss each. A manifest or edge defect (undeclared, forbidden or cyclic import) is rooted at the **importing** module, never at the imported one.
 
 Establish the intended graph rules from module ownership and applicable project policy, then inspect the effective build graph, source/API references, visibility, check logic, exclusions and validation invocation. Do not infer policy solely from target suffixes or assume every local architectural convention applies everywhere.
 

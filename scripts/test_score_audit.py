@@ -34,9 +34,16 @@ def principle(d, pid, findings=()):
     return d
 
 
-def systemic(d, candidates, resolutions, findings):
-    d['systemic'] = {'candidates': candidates, 'resolutions': resolutions}
-    d['principles'].insert(0, {'id': 'S', 'title': 'Systemic structure', 'findings': findings})
+def structural(d, candidates, resolutions, findings, pid='P1'):
+    d['structural'] = {'candidates': candidates, 'resolutions': resolutions}
+    existing = next((p for p in d['principles'] if p['id'] == pid), None)
+    if existing:
+        existing['findings'].extend(findings)
+        for f in findings:
+            for m in f['rootCostModuleIDs']:
+                existing['ledger'][m] = {'status': 'issue', 'basis': 'Traced'}
+        return d
+    principle(d, pid, findings); d['principles'].insert(0, d['principles'].pop())
     return d
 
 
@@ -73,13 +80,14 @@ def scenarios():
     d = sample(); d['module_weights'] = {m: (i % 7) * 13 + 1 for i, m in enumerate(d['modules'])}; cases.append(d)
     d = sample(severity='medium'); d['module_weights'] = {m: 500 if i == 0 else 3 for i, m in enumerate(d['modules'])}
     d['excluded_modules'] = [{'module': 'Modules/M2', 'reason': 'Scope'}]; cases.append(d)
-    hub = [candidate('S-hub-1', ['Modules/M0']), candidate('S-mono-1', ['Modules/M5'], 'monolithic-module', 'medium')]
-    d = systemic(sample(severity='medium'), hub, {'S-hub-1': {'status': 'confirmed', 'finding': 's-hub'}, 'S-mono-1': {'status': 'dismissed', 'reason': 'Composition only', 'evidence': ['App.swift:1']}},
-                 [finding('s-hub', ['Modules/M0'], 'high', archetype='contamination-hub', candidate_ids=['S-hub-1'])]); cases.append(d)
-    d = copy.deepcopy(d); d['systemic']['resolutions'].pop('S-mono-1'); cases.append(d)
-    d = systemic(sample(), [], {}, [finding('s-a', ['Modules/M3'], 'high', archetype='tangled-graph'), finding('s-b', ['Modules/M3'], 'medium', archetype='parallel-abstractions'),
-                                   finding('s-c', ['Modules/M3'], 'low', archetype='parallel-abstractions')]); cases.append(d)
-    d = copy.deepcopy(d); d['decisions'] = {'s-a': {'status': 'invalid', 'decided_by': 'user'}}; cases.append(d)
+    hub = [candidate('C-hub-1', ['Modules/M0']), candidate('C-mono-1', ['Modules/M5'], 'monolithic-module', 'medium'), candidate('C-par-1', ['Modules/M9'], 'parallel-abstractions', 'medium')]
+    d = structural(sample(severity='medium'), hub, {'C-hub-1': {'status': 'confirmed', 'finding': 'p1-hub'}, 'C-mono-1': {'status': 'dismissed', 'reason': 'Composition only', 'evidence': ['App.swift:1']}},
+                   [finding('p1-hub', ['Modules/M0'], 'high', archetype='contamination-hub', candidate_ids=['C-hub-1'])])
+    d['principles'].append({'id': 'P5', 'skipped': True}); cases.append(d)
+    d = copy.deepcopy(d); d['structural']['resolutions'].pop('C-mono-1'); cases.append(d)
+    d = principle(sample(), 'P7', [finding('p7-a', ['Modules/M3'], 'high')]); principle(d, 'P5', [finding('p5-b', ['Modules/M3'], 'medium'), finding('p5-c', ['Modules/M3'], 'low')]); cases.append(d)
+    d = copy.deepcopy(d); d['decisions'] = {'p7-a': {'status': 'invalid', 'decided_by': 'user'}}; cases.append(d)
+    d = sample(severity='high'); d['principles'][0]['findings'][0]['implementation_only'] = True; cases.append(d)
     return cases
 
 
@@ -90,7 +98,7 @@ class AuditTests(unittest.TestCase):
 
     def test_exposure_includes_root_and_direct_consumers(self):
         s = score(sample(affected=20)); self.assertEqual(s['principles'][0]['affectedModules'], 20)
-        self.assertAlmostEqual(s['risk']['score'], .1 * 21 / 100); self.assertEqual(s['risk']['health'], 98)
+        self.assertAlmostEqual(s['risk']['score'], .05 * 21 / 100); self.assertEqual(s['risk']['health'], 99)
 
     def test_code_mass_drives_risk(self):
         s = score(weighted([60, 10, 10, 10, 10])); self.assertAlmostEqual(s['risk']['score'], .24); self.assertEqual(s['weighting'], 'code-mass')
@@ -100,43 +108,47 @@ class AuditTests(unittest.TestCase):
         for masses, expected in [([1, 4], 'LOW'), ([1, 3], 'MEDIUM'), ([5, 4], 'MEDIUM'), ([5, 3], 'HIGH')]:
             self.assertEqual(score(weighted(masses))['risk']['band'], expected, masses)
 
-    def test_max_within_dimension_and_compound_across_dimensions(self):
+    def test_max_within_principle_and_compound_across_principles(self):
         d = weighted([1, 1]); d['principles'][0]['findings'].append(finding('second', ['M0'], 'medium'))
         self.assertAlmostEqual(score(d)['risk']['score'], .4 / 2)
         principle(d, 'P3', [finding('p3', ['M0'], 'medium')])
-        s = score(d); self.assertAlmostEqual(s['risk']['score'], (1 - .6 * .8) / 2); self.assertAlmostEqual(s['principles'][0]['risk']['score'], .4 / 2); self.assertAlmostEqual(s['principles'][1]['risk']['score'], .2 / 2)
+        s = score(d); self.assertAlmostEqual(s['risk']['score'], (1 - .6 * .9) / 2); self.assertAlmostEqual(s['principles'][0]['risk']['score'], .4 / 2); self.assertAlmostEqual(s['principles'][1]['risk']['score'], .1 / 2)
 
     def test_cross_tagged_finding_counts_once(self):
         d = weighted([1, 1]); same = copy.deepcopy(d['principles'][0]['findings'][0]); principle(d, 'P3', [same])
         self.assertAlmostEqual(score(d)['risk']['score'], .4 / 2)
 
-    def test_systemic_archetypes_are_separate_dimensions(self):
-        d = systemic(weighted([1, 1], 'low'), [], {}, [finding('s-a', ['M1'], 'high', archetype='tangled-graph'),
-                     finding('s-b', ['M1'], 'medium', archetype='parallel-abstractions'), finding('s-c', ['M1'], 'low', archetype='parallel-abstractions')])
-        s = score(d); self.assertAlmostEqual(s['principles'][0]['risk']['score'], (1 - .6 * .8) / 2)
-        self.assertEqual([r['id'] for r in s['ranking']][:2], ['s-a', 's-b'])
+    def test_unresolved_candidates_withhold_the_score_and_mark_their_principle(self):
+        d = structural(sample(), [candidate('C-hub-1', ['Modules/M0'])], {}, [])
+        s = score(d); self.assertIsNone(s['risk']['score']); self.assertEqual(s['risk']['withheld'], 'structural candidates unresolved')
+        self.assertEqual([p['gate'] for p in s['principles']], ['incomplete', 'pass']); self.assertEqual(s['overall_gate'], 'incomplete')
+        d['structural']['resolutions'] = {'C-hub-1': {'status': 'dismissed', 'reason': 'Stable value module', 'evidence': ['Ids.swift:4']}}
+        s = score(d); self.assertIsNotNone(s['risk']['score']); self.assertEqual(s['structural']['dismissed'], ['C-hub-1'])
 
-    def test_unresolved_candidates_withhold_the_score(self):
-        d = systemic(sample(), [candidate('S-hub-1', ['Modules/M0'])], {}, [])
-        s = score(d); self.assertIsNone(s['risk']['score']); self.assertEqual(s['risk']['withheld'], 'systemic candidates unresolved')
-        self.assertEqual(s['principles'][0]['gate'], 'incomplete'); self.assertEqual(s['overall_gate'], 'incomplete')
-        d['systemic']['resolutions'] = {'S-hub-1': {'status': 'dismissed', 'reason': 'Stable value module', 'evidence': ['Ids.swift:4']}}
-        s = score(d); self.assertIsNotNone(s['risk']['score']); self.assertEqual(s['systemic']['dismissed'], ['S-hub-1'])
+    def test_candidates_of_skipped_principles_are_out_of_review(self):
+        d = structural(sample(), [candidate('C-par-1', ['Modules/M0'], 'parallel-abstractions', 'medium')], {}, [])
+        d['principles'].append({'id': 'P5', 'skipped': True})
+        s = score(d); self.assertIsNotNone(s['risk']['score']); self.assertEqual(s['structural']['skipped'], ['C-par-1'])
 
-    def test_confirmed_candidate_requires_floor_or_override(self):
-        d = systemic(sample(), [candidate('S-hub-1', ['Modules/M0'])], {'S-hub-1': {'status': 'confirmed', 'finding': 's-hub'}},
-                     [finding('s-hub', ['Modules/M0'], 'medium', archetype='contamination-hub', candidate_ids=['S-hub-1'])])
+    def test_confirmed_candidate_requires_owner_finding_and_floor(self):
+        d = structural(sample(), [candidate('C-hub-1', ['Modules/M0'])], {'C-hub-1': {'status': 'confirmed', 'finding': 'p1-hub'}},
+                       [finding('p1-hub', ['Modules/M0'], 'medium', archetype='contamination-hub', candidate_ids=['C-hub-1'])])
         with self.assertRaises(ValueError): score(d)
         d['principles'][0]['findings'][0]['floor_override_reason'] = 'Only value types leak; consumers never change with it'
-        self.assertEqual(score(d)['principles'][0]['findings'][0]['severity_floor'], 'high')
+        s = score(d); self.assertEqual(s['principles'][0]['findings'][0]['severity_floor'], 'high'); self.assertTrue(s['ranking'][0]['structural'])
+        d['structural']['resolutions']['C-hub-1']['finding'] = 'unit-contract'
+        with self.assertRaisesRegex(ValueError, 'P1 finding'): score(d)
 
-    def test_reject_invalid_systemic_records(self):
+    def test_implementation_only_defect_exposes_its_owner_only(self):
+        d = sample(severity='high', affected=30); d['principles'][0]['findings'][0]['implementation_only'] = True
+        s = score(d); self.assertAlmostEqual(s['risk']['score'], .4 / 100); self.assertEqual(s['principles'][0]['affectedModules'], 0)
+
+    def test_reject_invalid_structural_records(self):
         bad = []
-        bad.append(systemic(sample(), [candidate('S-1', ['Modules/M0'])], {'S-1': {'status': 'dismissed', 'reason': 'No evidence'}}, []))
-        bad.append(systemic(sample(), [candidate('S-1', ['Modules/M0'])], {'S-1': {'status': 'confirmed', 'finding': 'unit-contract'}}, []))
-        bad.append(systemic(sample(), [candidate('S-1', ['Missing'])], {}, []))
-        bad.append(systemic(sample(), [candidate('S-1', ['Modules/M0'], archetype='vibes')], {}, []))
-        d = sample(); d['systemic'] = {'candidates': [candidate('S-1', ['Modules/M0'])], 'resolutions': {}}; d['principles'].append({'id': 'S', 'skipped': True}); bad.append(d)
+        bad.append(structural(sample(), [candidate('C-1', ['Modules/M0'])], {'C-1': {'status': 'dismissed', 'reason': 'No evidence'}}, []))
+        bad.append(structural(sample(), [candidate('C-1', ['Missing'])], {}, []))
+        bad.append(structural(sample(), [candidate('C-1', ['Modules/M0'], archetype='vibes')], {}, []))
+        d = sample(); d['principles'].append({'id': 'S', 'findings': []}); bad.append(d)
         for d in bad:
             with self.assertRaises(ValueError): score(d)
 
@@ -155,11 +167,11 @@ class AuditTests(unittest.TestCase):
     def test_shared_root_still_has_open_issue(self):
         d = sample(); f = copy.deepcopy(d['principles'][0]['findings'][0]); f['id'] = 'second'; d['principles'][0]['findings'].append(f)
         d['decisions'] = {'unit-contract': {'status': 'accepted', 'reason': 'Choice', 'decided_by': 'user'}}
-        s = score(d); self.assertEqual(s['rootCostModules'], 1); self.assertAlmostEqual(s['risk']['score'], .021)
+        s = score(d); self.assertEqual(s['rootCostModules'], 1); self.assertAlmostEqual(s['risk']['score'], .0105)
 
     def test_scope_filters_roots_consumers_and_denominator(self):
         d = sample(n=10, affected=2); d['excluded_modules'] = [{'module': 'Modules/M1', 'reason': 'Scope'}]
-        s = score(d); self.assertEqual(s['total'], 9); self.assertEqual(s['affectedModules'], 1); self.assertAlmostEqual(s['risk']['score'], .1 * 2 / 9)
+        s = score(d); self.assertEqual(s['total'], 9); self.assertEqual(s['affectedModules'], 1); self.assertAlmostEqual(s['risk']['score'], .05 * 2 / 9)
         d['excluded_modules'].append({'module': 'Modules/M0', 'reason': 'Scope'}); s = score(d); self.assertEqual(s['risk']['score'], 0); self.assertFalse(s['principles'][0]['findings'][0]['in_scope'])
 
     def test_external_enforcement_stays_out_of_risk(self):
@@ -175,7 +187,7 @@ class AuditTests(unittest.TestCase):
         self.assertAlmostEqual(s['risk']['assessed_mass_min'], .99)
 
     def test_unscreened_audit_is_flagged(self):
-        s = score(sample()); self.assertFalse(s['systemic']['screened'])
+        s = score(sample()); self.assertFalse(s['structural']['screened'])
 
     def test_suggestion_is_unscored(self):
         d = sample(severity='high'); d['principles'][0]['findings'][0]['kind'] = 'suggestion'; d['principles'][0]['ledger']['Modules/M0']['status'] = 'clear'
@@ -193,7 +205,7 @@ class AuditTests(unittest.TestCase):
             with self.assertRaises(ValueError): score(d)
 
     def test_tiny_is_strictly_under_one_percent_and_stable_after_review(self):
-        for severity, count, expected in [('high', 1, 'tiny'), ('high', 2, 'issue'), ('low', 8, 'tiny'), ('low', 9, 'issue')]:
+        for severity, count, expected in [('high', 1, 'tiny'), ('high', 2, 'issue'), ('low', 18, 'tiny'), ('low', 19, 'issue')]:
             d = sample(severity=severity, affected=count); s = score(d); self.assertEqual(s['principles'][0]['findings'][0]['presentation'], expected, (severity, count))
             d['decisions'] = {'unit-contract': {'status': 'resolved'}}; s = score(d); self.assertEqual(s['risk']['score'], 0); self.assertEqual(s['principles'][0]['findings'][0]['presentation'], expected)
         d = sample(); d['consumer_graph_complete'] = False; self.assertEqual(score(d)['principles'][0]['findings'][0]['presentation'], 'issue')
@@ -204,12 +216,12 @@ class AuditTests(unittest.TestCase):
                           'P2', [finding(f'p2-{i}', [f'M{i}'], 'medium') for i in range(4)])
         messy = {'modules': ['App', 'Core', 'Feature'], 'module_weights': {'App': 70, 'Core': 20, 'Feature': 10}, 'consumer_graph_complete': True,
                  'consumer_graph_provenance': {'source': 'fixture'}, 'consumers': {'App': [], 'Core': ['App', 'Feature'], 'Feature': ['App']}, 'principles': []}
-        messy = systemic(principle(messy, 'P2'), [candidate('S-mono', ['App'], 'monolithic-module'), candidate('S-hub', ['Core'])],
-                         {'S-mono': {'status': 'confirmed', 'finding': 's-mono'}, 'S-hub': {'status': 'confirmed', 'finding': 's-hub'}},
-                         [finding('s-mono', ['App'], 'high', archetype='monolithic-module', candidate_ids=['S-mono']),
-                          finding('s-hub', ['Core'], 'high', archetype='contamination-hub', candidate_ids=['S-hub'])])
-        self.assertGreater(score(clean)['risk']['health'], 90); self.assertLess(score(messy)['risk']['health'], 60)
-        self.assertEqual(score(messy)['ranking'][0]['id'], 's-hub')
+        messy = structural(principle(messy, 'P2'), [candidate('C-mono', ['App'], 'monolithic-module'), candidate('C-hub', ['Core'])],
+                           {'C-mono': {'status': 'confirmed', 'finding': 'p1-mono'}, 'C-hub': {'status': 'confirmed', 'finding': 'p1-hub'}},
+                           [finding('p1-mono', ['App'], 'high', archetype='monolithic-module', candidate_ids=['C-mono']),
+                            finding('p1-hub', ['Core'], 'high', archetype='contamination-hub', candidate_ids=['C-hub'])])
+        self.assertGreater(score(clean)['risk']['health'], 90); self.assertLess(score(messy)['risk']['health'], 70)
+        self.assertEqual(score(messy)['ranking'][0]['id'], 'p1-hub')
 
     def test_utf8_cli_input_and_output(self):
         data = sample(); data['principles'][0]['findings'][0]['severity_reason'] = 'Unité: 1 → 100%'
@@ -239,7 +251,7 @@ class AuditTests(unittest.TestCase):
                 if py[field]['score'] is None: self.assertIsNone(js[field]['score'])
                 else: self.assertAlmostEqual(py[field]['score'], js[field]['score'])
             self.assertEqual([r['id'] for r in py['ranking']], [r['id'] for r in js['ranking']])
-            self.assertEqual(py['systemic']['unresolved'], js['systemic']['unresolved'])
+            self.assertEqual(py['structural']['unresolved'], js['structural']['unresolved'])
             for p, j in zip(py['principles'], js['principles']):
                 self.assertEqual(p['gate'], j['gate'])
                 if p['gate'] == 'skipped': continue

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Deterministic structural screen: code mass, dependency topology and systemic-issue candidates.
+"""Deterministic structure scan: code mass, dependency topology and structural candidates.
 
-The scan produces facts and candidates, never verdicts. Every candidate must be verified or
-dismissed with counterevidence by the systemic evaluator before it becomes a finding.
+The scan produces facts and candidates, never verdicts. Each candidate names the principle that owns it; that
+principle's evaluator confirms it as a finding or dismisses it with counterevidence.
 """
 import argparse
 from collections import Counter, defaultdict
@@ -61,6 +61,8 @@ CONCERNS = {
 LAYERS = {'ui': {'UIKit', 'SwiftUI', 'SwiftUICore', 'AppKit'},
           'persistence': {'CoreData', 'SwiftData', 'RealmSwift', 'Realm', 'GRDB', 'SQLite', 'FMDB', 'YapDatabase', 'sqlite3'},
           'networking': {'Alamofire', 'Moya', 'Apollo', 'AFNetworking', 'GRPC', 'GRPCCore', 'Starscream', 'SocketIO', 'Network', 'CFNetwork'}}
+# Each structural archetype is evaluated by the principle it violates; candidates are leads for that evaluator only.
+OWNERS = {'monolithic-module': 'P1', 'contamination-hub': 'P1', 'mixed-concerns': 'P1', 'parallel-abstractions': 'P5', 'tangled-graph': 'P7'}
 # Generic infrastructure roles. A protocol whose name reduces to qualifiers + one role word is a mechanism, not a domain port.
 ROLES = {'networking': r'(HTTPClient|APIClient|NetworkClient|NetworkService|Networking|NetworkManager|RequestPerform\w*|'
                        r'RequestExecut\w*|RequestSend\w*|RestClient|WebService|APIService|Transport|HTTPSession|NetworkSession)',
@@ -400,9 +402,9 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
     candidates = []
 
     def add(archetype, modules_, metrics, severity, trigger):
-        candidates.append({'id': f'S-{archetype}-{len([c for c in candidates if c["archetype"] == archetype]) + 1}',
-                           'archetype': archetype, 'modules': sorted(modules_), 'severity_floor': severity,
-                           'trigger': trigger, 'metrics': metrics})
+        candidates.append({'id': f'C-{archetype}-{len([c for c in candidates if c["archetype"] == archetype]) + 1}',
+                           'archetype': archetype, 'principle': OWNERS[archetype], 'modules': sorted(modules_),
+                           'severity_floor': severity, 'trigger': trigger, 'metrics': metrics})
 
     # Monolithic host: one target owns the codebase, and its folders reference each other densely.
     for m in ids:

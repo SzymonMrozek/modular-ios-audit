@@ -66,14 +66,14 @@ Ignore the modules I explicitly list and keep the audit read-only.
 Audit P2 and P3 only. Use the current working tree, including local changes.
 ```
 
-The agent runs the structure scan, checks its module discovery against the actual build system, freezes the module inventory/import graph and code mass, resolves systemic candidates with a dedicated evaluator, and delegates one independent evaluator per selected principle. No particular DI library, app architecture, project generator, build runner, MCP server, or review tool is required. If the host cannot delegate, the skill discloses that limitation and offers a labelled single-agent alternative.
+The agent runs the structure scan, checks its module discovery against the actual build system, freezes the module inventory/import graph and code mass, and delegates one independent evaluator per selected principle; each must confirm or dismiss the structural candidates the scan routes to it. No particular DI library, app architecture, project generator, build runner, MCP server, or review tool is required. If the host cannot delegate, the skill discloses that limitation and offers a labelled single-agent alternative.
 
 The audit does not change application code. It distinguishes inspected facts, structural risks, suggestions, unknown checks and unverified proposed code.
 
 ## Report
 
 - **Architecture health 0–100** with a **LOW / MEDIUM / HIGH** risk band; no overall pass/fail gate.
-- A deterministic structure scan first: monolithic targets, contamination hubs, tangled graphs, mixed concerns and parallel abstractions. Every candidate is confirmed or dismissed before a score is shown.
+- A deterministic structure scan first. It routes monolithic targets, contamination hubs and mixed concerns to P1, parallel abstractions to P5 and tangled graphs to P7; every candidate is confirmed or dismissed before a score is shown.
 - Code-mass weighting: a module counts by its share of the code, so one giant target cannot hide behind many small clean ones.
 - Top problems ranked by impact; separate defect-owner (**root cost**) and direct-consumer (**affected**) counts.
 - Individual principle scores, consequence weighting, coverage (including assessed code mass) and check evidence.

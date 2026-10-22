@@ -64,23 +64,23 @@ def snapshot(result, titles):
             roots = str(p['rootCostModules'])
             affected = f"{p['affectedModules'] if p['affectedModules'] is not None else '?'}/{result['total']}"
             risk_label = f"{percent(p['risk'])} · {p['risk']['band'] or 'N/A'}"
-            coverage = 'Structure scan' if pid == 'S' else f"{p['counts']['issue'] + p['counts']['clear']}/{p['applicable']} classified"
+            coverage = f"{p['counts']['issue'] + p['counts']['clear']}/{p['applicable']} classified"
         rows.append(f'<div class="score-row"><a class="score-name" href="#{pid.lower()}">{html.escape(pid + " " + titles.get(pid, ""))}<span class="score-sub">{coverage}</span></a><div>{roots}</div><div>{affected}</div><div>{risk_label}</div><div>{badge(p["gate"].upper(), p["gate"])}</div></div>')
     overall_band = result['risk']['band'] or 'N/A'
     band_chip = f'<span class="impact-band {overall_band.lower()}" aria-label="Overall risk band">{overall_band}</span>'
     risk = result['risk']
     headline = f'Architecture health · withheld ({html.escape(risk["withheld"])})' if risk['withheld'] else f'Architecture health · {risk["health"]}/100'
-    systemic = result['systemic']
+    structural = result['structural']
     facts = [f'Risk {percent(risk)}', f'Observed {result["observed_risk"]["health"] if result["observed_risk"]["health"] is not None else "N/A"}/100',
              f'{result["total"]}/{result["inventory_total"]} modules in scope', 'Weighted by code mass' if result['weighting'] == 'code-mass' else 'Equal module weights',
-             f'Systemic candidates {systemic["candidates"] - len(systemic["unresolved"])}/{systemic["candidates"]} resolved' if systemic['screened'] else 'Systemic screen missing']
+             f'Structural candidates {structural["candidates"] - len(structural["unresolved"])}/{structural["candidates"]} resolved' if structural['screened'] else 'Structure scan missing']
     structure = result.get('structure')
     structure_row = '' if not structure else '<div class="score-structure">' + ''.join(f'<span>{html.escape(label)}</span>' for label in (
         f'Effective modules {structure["effective_modules"]}', f'Largest {structure["largest_module"]} {structure["largest_share"] * 100:.0f}%',
         f'Change reaches {structure["mass_propagation_cost"] * 100:.0f}% of code', f'Cycles {structure["cycles"]}')) + '</div>'
     top = [r for r in result['ranking'] if r['open']][:5]
     problems = '' if not top else '<ol class="top-problems" aria-label="Top problems by impact">' + ''.join(
-        f'<li><a href="#{html.escape(r["id"])}">{html.escape(titles.get(r["id"], r["id"]))}</a><span class="score-sub">{"Systemic · " if r["systemic"] else ""}{r["severity"]} · {r["impact"] * 100:.1f}% risk</span></li>' for r in top) + '</ol>'
+        f'<li><a href="#{html.escape(r["id"])}">{html.escape(titles.get(r["id"], r["id"]))}</a><span class="score-sub">{", ".join(r["principles"])}{" · structural" if r["structural"] else ""} · {r["severity"]} · {r["impact"] * 100:.1f}% risk</span></li>' for r in top) + '</ol>'
     return (f'<section class="scoreboard" id="scores" data-overview><div class="verdict"><h2>{headline}</h2>{band_chip}<span class="fact-chip">Coverage: {"complete" if risk["coverage_complete"] else "partial"}</span></div>'
             f'<div class="score-overall">{"".join(f"<span>{html.escape(fact)}</span>" for fact in facts)}</div>{structure_row}{problems}'
             f'<div class="score-head"><span>Principle</span><span>Root cost</span><span>Affected</span><span>Risk</span><span>Local status</span></div>{"".join(rows)}</section>')

@@ -2,7 +2,7 @@
 
 Core issue: an abstraction’s cost is not justified by the decision, variation or invariant it protects, or the abstraction is at the wrong boundary and fails to provide its intended isolation. Evaluate usefulness rather than maximizing or minimizing protocols/modules.
 
-Competing whole-codebase mechanisms for one concern (two networking stacks, several router/coordinator systems) are screened as systemic parallel abstractions ([systemic.md](systemic.md)); P5 judges whether each individual abstraction earns its cost.
+P5 also owns **parallel abstractions**: two or more competing mechanisms for one concern (two networking stacks, Rx and Combine, several router/coordinator or DI systems) that callers must choose between. The structure scan flags them as P5 candidates ([structure-scan.md](structure-scan.md)); confirm or dismiss each. The correction picks one mechanism per concern, adapts the other behind it, and shows the migration boundary and the rule that blocks new use.
 
 Inspect protocols, wrappers, factories, adapters, mappers, generic layers, type erasure and Interface/Implementation splits where present. Trace actual callers and the decisions protected, substitution/configuration requirements, ownership/lifetime, tests and change paths. Look for forwarding chains, duplicate models/conversions, leaked implementation requirements and abstractions consumers must repeatedly work around. These are non-exhaustive lenses, not style bans.
 
