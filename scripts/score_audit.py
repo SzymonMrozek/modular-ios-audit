@@ -19,6 +19,8 @@ WORST = 'risk of the worst principle; each principle is the severity-weighted sh
 # Structure-scan archetypes and the principle whose evaluator confirms or dismisses them.
 OWNERS = {'monolithic-module': 'P1', 'contamination-hub': 'P1', 'mixed-concerns': 'P1', 'parallel-abstractions': 'P5', 'tangled-graph': 'P7'}
 MEDIUM_MIN, HIGH_MIN, TINY_MAX = Fraction(3, 100), Fraction(1, 10), Fraction(2, 100)
+# A tiny issue is also narrow: in a large inventory 2% alone would hide most medium findings.
+TINY_MODULES = 2
 # Below this many modules one module is ≥10% of the denominator, so any medium finding in it reads HIGH.
 SMALL_INVENTORY = 10
 
@@ -198,7 +200,8 @@ def score(data):
             active = in_scope and kind == 'issue' and decision['status'] == 'open'
             own_severity = severity(f, pid)
             original_risk = risk([(f, pid)] if kind == 'issue' and in_scope else [], external)
-            tiny = original_risk['score'] is not None and Fraction(original_risk['units'], 10 * total) < TINY_MAX and own_severity in ('low', 'medium')
+            tiny = (original_risk['score'] is not None and Fraction(original_risk['units'], 10 * total) < TINY_MAX
+                    and original_risk['involved_modules'] <= TINY_MODULES and own_severity in ('low', 'medium'))
             presentation = 'suggestion' if kind == 'suggestion' else 'tiny' if tiny else 'issue'
             rows.append({'id': fid, 'kind': kind, 'presentation': presentation, 'severity': own_severity, 'severity_reason': f['severity_reason'],
                          'structural': bool(linked), 'archetype': f.get('archetype'), 'candidate_ids': linked, 'severity_floor': floor,
@@ -207,7 +210,9 @@ def score(data):
                          'consequence_weight': UNITS[own_severity] / 10 if kind == 'issue' else 0,
                          **metrics([f] if active else [], external), 'risk': risk([(f, pid)] if active else [], external),
                          'observed_risk': original_risk})
-        external = p.get('scoring_scope') == 'external-only' or bool(findings) and all(not root_ids(f) for f in findings)
+        # Tooling-only principles are recognised by their issues; a rooted suggestion does not make them module-scoped.
+        issues_only = [f for f in findings if f.get('kind', 'issue') == 'issue']
+        external = p.get('scoring_scope') == 'external-only' or bool(issues_only) and all(not root_ids(f) for f in issues_only)
         if external and owner_union:
             raise ValueError('External-only scope cannot contain module defects: ' + pid)
         ledger = p.get('ledger', {})
@@ -298,7 +303,7 @@ def score(data):
               'fail' if adjusted['band'] == 'HIGH' else 'watch' if adjusted['band'] == 'MEDIUM' else 'pass')
     external_only = all(p.get('impact', {}).get('scope') == 'external-only' for p in results if p['gate'] != 'skipped') and gates != {'skipped'}
     structure = data.get('structure', {})
-    return {'policy': POLICY, 'thresholds': {'medium_min': float(MEDIUM_MIN), 'high_min': float(HIGH_MIN), 'tiny_max': float(TINY_MAX)},
+    return {'policy': POLICY, 'thresholds': {'medium_min': float(MEDIUM_MIN), 'high_min': float(HIGH_MIN), 'tiny_max': float(TINY_MAX), 'tiny_modules': TINY_MODULES},
             'consequence_weights': {k: v / 10 for k, v in UNITS.items()}, 'overall_gate': legacy,
             'scope': 'full' if seen == PRINCIPLES and 'skipped' not in gates else 'partial',
             'inventory_total': len(modules), 'total': len(eligible), 'excluded_modules': exclusions,

@@ -505,13 +505,13 @@
             "Modules/EditorFeature"
           ],
           "reach_modules": [
-            "Modules/PhotoEditor",
             "Modules/VideoEditor"
           ],
           "external_scopes": [],
           "evidence": [
             "Sources/Editor.swift:1"
-          ]
+          ],
+          "exposure": "verified"
         }
       ],
       "ledger": {
