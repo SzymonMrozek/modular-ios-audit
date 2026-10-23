@@ -66,7 +66,7 @@ def snapshot(result, titles):
             roots = f"{p['rootCostModules']}/{total}"
             involved = f"{p['risk']['involved_modules'] if p['risk']['involved_modules'] is not None else '?'}/{total}"
             risk_label = f"{percent(p['risk'])} · {p['risk']['band'] or 'N/A'}"
-            coverage = f"{p['counts']['issue'] + p['counts']['clear']}/{p['applicable']} classified"
+            coverage = f"{p['counts']['issue'] + p['counts']['clear']}/{p['applicable']} classified · {p['open_issues']} open {'issue' if p['open_issues'] == 1 else 'issues'}"
         rows.append(f'<div class="score-row"><a class="score-name" href="#{pid.lower()}">{html.escape(pid + " " + titles.get(pid, ""))}<span class="score-sub">{coverage}</span></a><div>{roots}</div><div>{involved}</div><div>{risk_label}</div><div>{badge(p["gate"].upper(), p["gate"])}</div></div>')
     risk, observed, structural = result['risk'], result['observed_risk'], result['structural']
     band = risk['band'] or 'N/A'
@@ -79,6 +79,8 @@ def snapshot(result, titles):
              f'Before review choices {percent(observed)}', f'{total}/{result["inventory_total"]} modules in scope',
              f'Lowest principle classification {math.floor(risk["coverage_min"] * 100)}%' if risk['coverage_min'] is not None else 'Classification unknown',
              f'Structural candidates {structural["candidates"] - len(structural["unresolved"])}/{structural["candidates"]} resolved' if structural['screened'] else 'Structure scan missing']
+    if result['small_inventory']:
+        facts.append(f'Only {total} modules: one module is at least 10% of every score, so read the issue counts too')
     structure = result.get('structure')
     structure_row = '' if not structure else '<div class="score-structure"><span>Structure scan:</span>' + ''.join(f'<span>{html.escape(label)}</span>' for label in (
         f'effective modules {structure["effective_modules"]}', f'largest {structure["largest_module"]} holds {structure["largest_share"] * 100:.0f}% of code',
