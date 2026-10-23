@@ -45,6 +45,13 @@ Findings that confirm a structural candidate must meet its `severity_floor` unle
 
 Root the defect where it lives. An edge or manifest defect is rooted at the **importing** module with `exposure: owners`: the importer's own consumers are not affected by its undeclared import. If that importer is outside the inventory (e.g. a test-only target), record it under `external_scopes` with no roots. Targets that consumers reach only through another target of the same module (Data or Assembly behind Domain, Implementation behind Interface) count as behind an interface.
 
+**One mechanism bypassed at several sites** (formatting, decoding or validation re-implemented in N modules) has one convention, so defect-module counts stay comparable between runs:
+
+- If a shared owner already offers the operation and modules bypass it, the defect is in each copy: root at the bypassing modules with `exposure: owners`.
+- If no module owns the operation yet, or its contract forces the copies (missing capability, wrong unit), root at the module that should own it with `exposure: verified` and list the copying modules in `reach_modules`.
+
+Both forms involve the same modules and score the same; the convention decides what "defects in N modules" means.
+
 A module is **involved** when it owns or is reached by an open defect. Each involved module counts once, at the strongest open defect that reaches it:
 
 `risk = Σ over involved modules of maxWeight / number of eligible modules`
@@ -53,7 +60,7 @@ A module is **involved** when it owns or is reached by an open defect. Each invo
 - **Overall risk** (the headline) is the **worst principle's risk**: "Risk 33.8% · worst principle P1 One clear responsibility". It never exceeds the rows below it. The union of involved modules across all principles ("37/40 modules involved across all principles") and the defect-module count stay beside it as counts, not as the score: added across eight principles they read like a sum and would put a repository with only moderate principle rows into HIGH.
 - **Finding impact** applies it to one finding; `ranking` orders findings by impact, structural first on ties. The report lists the top five as "Top problems by risk" with principle, severity, defect modules and involved modules.
 
-Splitting one problem into several findings cannot raise the score, and a module with several defects still counts once. A cross-tagged identical finding counts once. When one cause is cross-tagged but its consequence differs by principle, keep the record identical and set `principle_severity: {"P8": "low"}`; each principle row then weighs it at its own severity. Principle rows also show their open issue count, because several issues on the same module do not add risk. External-only P7 enforcement keeps rule-family counts and never enters risk.
+Splitting one problem into several findings cannot raise the score, and a module with several defects still counts once. A cross-tagged identical finding counts once. When one cause is cross-tagged but its consequence differs by principle, keep the record identical and set `principle_severity: {"P8": "low"}`; each principle row then weighs it at its own severity. Principle rows also show their open issue count, because several issues on the same module do not add risk. External-only P7 enforcement keeps rule-family counts and never enters risk. A principle is external-only when `scoring_scope: external-only` is set or every one of its **issues** has no roots; rooted suggestions do not change that.
 
 Bands use the exact fraction: **LOW < 3%, MEDIUM 3–< 10%, HIGH ≥ 10%**. There is no derived health index; show the risk percentage with the module counts it comes from.
 
@@ -65,7 +72,7 @@ Calibration from full audits (worst principle; union of involved modules in brac
 
 ## Compact findings and review choices
 
-A low or medium issue with **impact strictly below 2%** is a **tiny issue** in presentation; high and critical issues never are; suggestions remain unscored. Unknown impact is not tiny. Presentation never changes the original kind, consequence, score or evidence.
+A low or medium issue that involves **at most 2 modules** and has **impact strictly below 2%** is a **tiny issue** in presentation; high and critical issues never are. The module limit keeps a large inventory from hiding most medium findings, where 2% alone would mean eight or more modules; suggestions remain unscored. Unknown impact is not tiny. Presentation never changes the original kind, consequence, score or evidence.
 
 Show full issues first. Put tiny issues and suggestions in one closed **Suggestions & tiny issues** group per principle, using short rows with a title and risk. Keep the complete problem, fix, code and Evidence behind each row's disclosure; deep links open both levels. A tiny issue still contributes its small risk until handled.
 
