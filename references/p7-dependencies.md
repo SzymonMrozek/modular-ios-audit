@@ -2,6 +2,8 @@
 
 Core issue: boundaries rely on convention while tooling permits undeclared or forbidden relationships.
 
+P7 also owns the **shape** of the graph: dependency cycles, high propagation cost (a change reaches a large share of the code) and library imports that bypass an Interface target. The structure scan flags these as P7 candidates ([structure-scan.md](structure-scan.md)); confirm or dismiss each. A manifest or edge defect (undeclared, forbidden or cyclic import) is rooted at the **importing** module, never at the imported one.
+
 Establish the intended graph rules from module ownership and applicable project policy, then inspect the effective build graph, source/API references, visibility, check logic, exclusions and validation invocation. Do not infer policy solely from target suffixes or assume every local architectural convention applies everywhere.
 
 Consider graph properties independently: declared direct edges, allowed direction/layer or implementation access, cycles (including contract-only cycles), and coverage/bypasses of those checks. Inspect generated/re-exported/conditional relationships, target source membership and SDK/vendor boundaries where they affect the effective graph. Adapt to packages, projects, mixed-language or generated code rather than assuming a particular manifest generator. These are discovery lenses; the import example is one enforcement case. Compiler/build-generation enforcement can suffice; a custom linter is not mandatory.

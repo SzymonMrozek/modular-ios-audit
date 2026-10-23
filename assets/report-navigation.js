@@ -27,7 +27,7 @@
     overview.forEach(el => { el.hidden = Boolean(panel); });
     if (breadcrumb) breadcrumb.hidden = !panel;
     if (panel) {
-      if (current) current.textContent = panel.id.toUpperCase() + ' · ' + (panel.querySelector('h2')?.textContent.replace(/^\s*P\d+\s*/i, '').trim() || '');
+      if (current) current.textContent = panel.id.toUpperCase() + ' · ' + (panel.querySelector('h2')?.textContent.replace(/^\s*(P\d+|S)\s*/i, '').trim() || '');
       if (jump) {
         jump.replaceChildren(new Option('All issues', ''));
         panel.querySelectorAll('details.issue').forEach(d => jump.add(new Option(d.querySelector('h3').textContent, d.id)));
