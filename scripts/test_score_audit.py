@@ -88,6 +88,10 @@ def scenarios():
     d = principle(sample(), 'P7', [finding('p7-a', ['Modules/M3'], 'high')]); principle(d, 'P5', [finding('p5-b', ['Modules/M3'], 'medium'), finding('p5-c', ['Modules/M3'], 'low')]); cases.append(d)
     d = copy.deepcopy(d); d['decisions'] = {'p7-a': {'status': 'invalid', 'decided_by': 'user'}}; cases.append(d)
     d = sample(severity='high'); d['principles'][0]['findings'][0]['implementation_only'] = True; cases.append(d)
+    d = sample(severity='medium', affected=40); d['principles'][0]['findings'][0].update(exposure='verified', reach_modules=['Modules/M3', 'Modules/M4']); cases.append(d)
+    d = sample(severity='medium', affected=10); f = d['principles'][0]['findings'][0]; f['principle_severity'] = {'P3': 'low'}
+    principle(d, 'P3', [copy.deepcopy(f)]); cases.append(d)
+    d = plain(n=3, severity='medium'); cases.append(d)
     return cases
 
 
@@ -123,6 +127,30 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(s['risk']['involved_modules'], 22); self.assertEqual(s['risk']['worst_involved_modules'], 21)
         d['decisions'] = {'unit-contract': {'status': 'resolved'}}; s = score(d)
         self.assertEqual(s['risk']['worst_principle'], 'P3'); self.assertAlmostEqual(s['risk']['score'], .004)
+
+    def test_exposure_modes(self):
+        d = sample(severity='medium', affected=40); f = d['principles'][0]['findings'][0]
+        self.assertAlmostEqual(score(d)['risk']['score'], .4 * 41 / 100)
+        f.update(exposure='verified', reach_modules=['Modules/M3', 'Modules/M4'])
+        s = score(d); self.assertAlmostEqual(s['risk']['score'], .4 * 3 / 100); self.assertEqual(s['principles'][0]['affectedModules'], 2)
+        f['exposure'] = 'owners'; s = score(d); self.assertAlmostEqual(s['risk']['score'], .4 / 100); self.assertEqual(s['principles'][0]['findings'][0]['exposure'], 'owners')
+        f['exposure'] = 'everyone'
+        with self.assertRaises(ValueError): score(d)
+
+    def test_cross_tagged_finding_can_weigh_differently_per_principle(self):
+        d = sample(severity='medium', affected=10); f = d['principles'][0]['findings'][0]; f['principle_severity'] = {'P3': 'low'}
+        principle(d, 'P3', [copy.deepcopy(f)]); s = score(d)
+        self.assertAlmostEqual(s['principles'][0]['risk']['score'], .4 * 11 / 100); self.assertAlmostEqual(s['principles'][1]['risk']['score'], .1 * 11 / 100)
+        self.assertEqual(s['principles'][1]['findings'][0]['severity'], 'low'); self.assertEqual(s['risk']['worst_principle'], 'P2')
+        f2 = s['principles'][1]['findings'][0]; self.assertEqual(f2['presentation'], 'tiny')
+        d['principles'][1]['findings'][0]['principle_severity'] = {'P9': 'low'}
+        with self.assertRaises(ValueError): score(d)
+
+    def test_small_inventory_and_issue_counts(self):
+        d = plain(n=3, severity='medium'); d['principles'][0]['findings'].append(finding('second', ['M1'], 'low'))
+        d['principles'][0]['ledger']['M1'] = {'status': 'issue', 'basis': 'Traced'}
+        s = score(d); self.assertTrue(s['small_inventory']); self.assertEqual(s['principles'][0]['open_issues'], 2)
+        self.assertFalse(score(sample())['small_inventory'])
 
     def test_cross_tagged_finding_counts_once(self):
         d = plain(); same = copy.deepcopy(d['principles'][0]['findings'][0]); principle(d, 'P3', [same])
