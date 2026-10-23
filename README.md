@@ -76,7 +76,7 @@ The audit does not change application code. It distinguishes inspected facts, st
 - A deterministic structure scan first. It routes monolithic targets, contamination hubs and mixed concerns to P1, parallel abstractions to P5 and tangled graphs to P7; every candidate is confirmed or dismissed before a score is shown.
 - Top problems ranked by risk, each with its defect modules and involved modules.
 - Individual principle scores, consequence weighting, coverage and check evidence.
-- Compact low/medium findings below 2%, readable principle pages and direct issue/fix/evidence links.
+- Compact narrow low/medium findings (≤2 modules, below 2%), readable principle pages and direct issue/fix/evidence links.
 - Swift and other iOS language syntax highlighting in git-style diffs.
 - Reason-free **Resolved / Invalid for this repo / Acceptable for this project** checkboxes.
 - Immediate recalculation, local persistence, export/import/reset and module exclusions.

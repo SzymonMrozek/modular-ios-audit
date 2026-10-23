@@ -142,9 +142,16 @@ class AuditTests(unittest.TestCase):
         principle(d, 'P3', [copy.deepcopy(f)]); s = score(d)
         self.assertAlmostEqual(s['principles'][0]['risk']['score'], .4 * 11 / 100); self.assertAlmostEqual(s['principles'][1]['risk']['score'], .1 * 11 / 100)
         self.assertEqual(s['principles'][1]['findings'][0]['severity'], 'low'); self.assertEqual(s['risk']['worst_principle'], 'P2')
-        f2 = s['principles'][1]['findings'][0]; self.assertEqual(f2['presentation'], 'tiny')
+        f2 = s['principles'][1]['findings'][0]; self.assertEqual(f2['presentation'], 'issue')
         d['principles'][1]['findings'][0]['principle_severity'] = {'P9': 'low'}
         with self.assertRaises(ValueError): score(d)
+
+    def test_tooling_only_principle_ignores_rooted_suggestions(self):
+        d = sample(); p = principle(d, 'P7', [finding('ci-lint', [], 'medium', external_scopes=['CI'])])['principles'][-1]
+        p['findings'].append({**finding('hint', ['Modules/M4'], 'low'), 'kind': 'suggestion'}); p['ledger'] = {}
+        p['enforcement_cases'] = [{'id': 'ci', 'family': 'CI runs lint', 'outcome': 'failed', 'evidence': ['ci.yml']}]
+        s = score(d); p7 = s['principles'][1]
+        self.assertIsNone(p7['risk']['score']); self.assertEqual(s['risk']['included_principles'], ['P2'])
 
     def test_small_inventory_and_issue_counts(self):
         d = plain(n=3, severity='medium'); d['principles'][0]['findings'].append(finding('second', ['M1'], 'low'))
@@ -237,8 +244,9 @@ class AuditTests(unittest.TestCase):
         for d in bad:
             with self.assertRaises(ValueError): score(d)
 
-    def test_tiny_is_strictly_under_two_percent_and_never_high(self):
-        for severity, count, expected in [('medium', 3, 'tiny'), ('medium', 4, 'issue'), ('low', 18, 'tiny'), ('low', 19, 'issue'), ('high', 0, 'issue')]:
+    def test_tiny_is_narrow_under_two_percent_and_never_high(self):
+        for severity, count, expected in [('medium', 0, 'tiny'), ('medium', 1, 'tiny'), ('medium', 2, 'issue'), ('low', 1, 'tiny'),
+                                          ('low', 2, 'issue'), ('low', 18, 'issue'), ('high', 0, 'issue')]:
             d = sample(severity=severity, affected=count); s = score(d); self.assertEqual(s['principles'][0]['findings'][0]['presentation'], expected, (severity, count))
             d['decisions'] = {'unit-contract': {'status': 'resolved'}}; s = score(d); self.assertEqual(s['risk']['score'], 0); self.assertEqual(s['principles'][0]['findings'][0]['presentation'], expected)
         d = sample(); d['consumer_graph_complete'] = False; self.assertEqual(score(d)['principles'][0]['findings'][0]['presentation'], 'issue')

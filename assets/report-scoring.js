@@ -49,7 +49,8 @@
     const principles = data.principles.map(p => {
       if (p.skipped) return {id: p.id, gate: 'skipped'};
       const fs = p.findings || [];
-      const external = p.scoring_scope === 'external-only' || fs.length > 0 && fs.every(f => !(f.rootCostModuleIDs || f.observed_modules || []).length);
+      const issues = fs.filter(f => (f.kind || 'issue') === 'issue');
+      const external = p.scoring_scope === 'external-only' || issues.length > 0 && issues.every(f => !(f.rootCostModuleIDs || f.observed_modules || []).length);
       const findings = fs.map(f => {
         const decision = normalize(data.decisions?.[f.id] || {status: 'open'});
         const inScope = roots(f).length > 0 || !(f.rootCostModuleIDs || f.observed_modules || []).length && f.external_scopes?.length > 0;
@@ -58,7 +59,7 @@
         const active = observed && decision.status === 'open';
         const findingExternal = !(f.rootCostModuleIDs || f.observed_modules || []).length && Boolean(f.external_scopes?.length);
         const originalRisk = findingExternal ? measure(null, N) : risk(observed ? [[f, p.id]] : []), own = severity(f, p.id);
-        const presentation = kind === 'suggestion' ? 'suggestion' : originalRisk.score !== null && originalRisk.units * 100 < 2 * 10 * N && ['low', 'medium'].includes(own) ? 'tiny' : 'issue';
+        const presentation = kind === 'suggestion' ? 'suggestion' : originalRisk.score !== null && originalRisk.units * 100 < 2 * 10 * N && originalRisk.involved_modules <= 2 && ['low', 'medium'].includes(own) ? 'tiny' : 'issue';
         return {...f, evidencedRootCostModuleIDs: f.rootCostModuleIDs || f.observed_modules || [], kind, presentation, decision, in_scope: Boolean(inScope), active,
           structural: Boolean(f.candidate_ids?.length), base_severity: f.base_severity || f.severity, severity: own, exposure: exposureMode(f), ...footprint(active ? [f] : [], findingExternal), observed: footprint(observed ? [f] : [], findingExternal),
           risk: findingExternal ? measure(null, N) : risk(active ? [[f, p.id]] : []), observed_risk: originalRisk};
