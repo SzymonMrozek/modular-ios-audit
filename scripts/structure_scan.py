@@ -5,20 +5,24 @@ The scan produces facts and candidates, never verdicts. Each candidate names the
 principle's evaluator confirms it as a finding or dismisses it with counterevidence.
 """
 import argparse
+import fnmatch
 from collections import Counter, defaultdict
 import json
 import os
 from pathlib import Path
 import re
 
-POLICY = 'structure-scan-v1'
+POLICY = 'structure-scan-v2'
 SOURCE_SUFFIXES = {'.swift', '.m', '.mm'}
 VENDOR_DIRS = {'.git', '.build', 'Pods', 'Carthage', 'DerivedData', 'Derived', 'SourcePackages', 'checkouts',
                'node_modules', 'vendor', 'Vendor', 'ThirdParty', 'third_party', '.swiftpm', 'Tuist', 'fastlane', 'build'}
 GENERATED = re.compile(r'(\.pb|\.grpc|\.generated|\+Generated|R\.generated|Generated|\.g)\.swift$|/Generated/|/gen/')
-TEST_PART = re.compile(r'(^|/)[^/]*(Tests?|Specs?|Mocks?|TestSupport|TestUtils|Testing|UITests|Fixtures|Snapshots?)(/|$)|'
-                       r'(\.tests?|\.spec|Tests?|Specs?)\.(swift|mm?)$')
+TEST_PART = re.compile(r'(^|/)[^/]*(Tests?|Specs?|Mocks?|TestSupport|TestUtils?|TestsUtils|Testing|UITests|Fixtures|Snapshots?|'
+                       r'TestHost|TestsHost|[Tt]ests?-host)(/|$)|(\.tests?|\.spec|Tests?|Specs?|Mocks?)\.(swift|mm?)$')
 MANIFESTS = {'Package.swift', 'Project.swift', 'Workspace.swift', 'Tuist.swift', 'Config.swift', 'Dangerfile.swift', 'Podfile'}
+# A directory holding one of these declares build targets; discovery trusts such directories over bare folder names.
+BUILD_FILES = {'Package.swift', 'Project.swift', 'BUILD', 'BUILD.bazel', 'project.yml'}
+BUILD_SUFFIXES = ('.podspec', '.xcodeproj')
 TOOLING_IMPORT = re.compile(r'(Test|Mock|Snapshot|Stub|Fixture|PackageDescription|ProjectDescription|^objc$|^XCTest)')
 TARGET_SUFFIXES = ('Implementation', 'Interface', 'Impl', 'Proto', 'Testing', 'Mocks', 'TestSupport', 'Sources')
 APPLE = set('''Foundation UIKit SwiftUI SwiftUICore Combine CoreData CoreGraphics CoreLocation MapKit AVFoundation AVKit Photos
@@ -33,7 +37,12 @@ AdSupport AppTrackingTransparency CoreHaptics PassKit Charts TipKit simd zlib Co
 RegexBuilder Swift MachO XCUIAutomation DeveloperToolsSupport CoreTransferable ExtensionKit DeviceCheck AdServices
 StoreKitTest Foundation_Private _Concurrency libkern sqlite3 Compression CFNetwork Messages MediaToolbox VideoToolbox
 CoreAudioKit AudioUnit GLKit OpenGLES ExternalAccessory HomeKit WatchConnectivity ClockKit CarPlay AssetsLibrary
-AddressBook AddressBookUI iAd Twitter NetworkExtension CoreMIDI ModelIO PhotosUI_Private'''.split())
+AddressBook AddressBookUI iAd Twitter NetworkExtension CoreMIDI ModelIO PhotosUI_Private MetalPerformanceShaders
+MetalPerformanceShadersGraph IOSurface Translation MetricKit AVFAudio AVRouting JavaScriptCore AppKit Cocoa Carbon
+SystemPackage OSLog os_log IOKit CoreWLAN SensitiveContentAnalysis BrowserEngineKit LiveCommunicationKit FamilyControls
+ManagedSettings DeviceActivity Foundation_ObjC CoreLocationUI MediaAccessibility CoreServicesUI PushToTalk SharedWithYou
+SharedWithYouCore Darwin_C mach sys pthread arpa netinet netinet6 netdb notify libc unistd dlfcn ifaddrs objc_runtime
+CommonCrypto_Private Accessibility'''.split())
 # Competing mechanisms for one concern. Two or more families in use is a parallel-abstraction candidate.
 CONCERNS = {
     'networking': {'Alamofire': 'Alamofire', 'Moya': 'Moya', 'Apollo': 'Apollo', 'AFNetworking': 'AFNetworking',
@@ -81,6 +90,10 @@ DECL = re.compile(r'^\s*(?:@[\w()., ]+\s+)*(?:(?:public|open|internal|package|pr
 PUBLIC = re.compile(r'^\s*(?:@[\w()., ]+\s+)*(?:public|open)\s', re.M)
 TOKEN = re.compile(r'\b[A-Z][A-Za-z0-9_]{2,}\b')
 APP_MARKER = re.compile(r'@main\b|UIApplicationMain|@UIApplicationMain|NSExtensionPrincipalClass|: *UIApplicationDelegate')
+# A file is UI code when it declares or extends views and controllers, not when it merely imports UIKit.
+UI_CODE = re.compile(r'\b(UIViewController|UIView|UITableView|UICollectionView|UINavigationController|NSViewController|'
+                     r'UIHostingController|some View|:\s*View\b|ViewModifier)\b')
+OBJC_HEADER_IMPORT = re.compile(r'^\s*#import\s+<([A-Za-z_]\w*)/', re.M)
 
 
 def code_lines(text):
@@ -110,20 +123,77 @@ def norm(name):
     return re.sub(r'[^a-z0-9]', '', name.lower().replace('-ios-', '-').replace('ios-', '').replace('-ios', ''))
 
 
-def walk_sources(root, include_tests, extra_excludes):
+def excluded(rel, patterns):
+    """A pattern excludes a path, or everything under it, at component boundaries; `*`/`?`/`[` make it a glob."""
+    for pattern in patterns:
+        if any(c in pattern for c in '*?['):
+            if fnmatch.fnmatchcase(rel, pattern):
+                return True
+            continue
+        prefix = pattern.strip('/')
+        if prefix and (rel == prefix or rel.startswith(prefix + '/')):
+            return True
+    return False
+
+
+def walk_sources(root, include_tests, extra_excludes, include_files=None):
+    allowed = set(include_files) if include_files is not None else None
     for current, dirs, files in os.walk(root):
-        rel_dir = os.path.relpath(current, root)
+        rel_dir = Path(os.path.relpath(current, root))
         dirs[:] = [d for d in dirs if d not in VENDOR_DIRS and not d.endswith(('.xcodeproj', '.xcworkspace', '.xcassets',
                    '.bundle', '.framework', '.xcframework', '.playground', '.docc')) and not d.startswith('.')
-                   and not any(Path(rel_dir, d).as_posix().startswith(e) for e in extra_excludes)]
+                   and not excluded((rel_dir / d).as_posix().lstrip('./'), extra_excludes)]
         for name in files:
             path = Path(current, name)
             rel = path.relative_to(root).as_posix()
-            if path.suffix not in SOURCE_SUFFIXES or GENERATED.search(rel) or name in MANIFESTS:
+            if path.suffix not in SOURCE_SUFFIXES or GENERATED.search(rel) or name in MANIFESTS or excluded(rel, extra_excludes):
+                continue
+            if allowed is not None and rel not in allowed:
                 continue
             if not include_tests and TEST_PART.search(rel):
                 continue
             yield rel, path
+
+
+def vendor_names(root):
+    """Module names supplied by dependency managers or binary frameworks; they never name first-party folders."""
+    names = set()
+    for lock in root.glob('**/Podfile.lock'):
+        if 'Pods' in lock.parts:
+            continue
+        names |= set(re.findall(r'^  - "?([A-Za-z0-9_+.-]+)', lock.read_text(errors='replace'), re.M))
+    for cart in root.glob('**/Cartfile.resolved'):
+        names |= {repo.split('/')[-1] for repo in re.findall(r'^\w+ "([^"]+)"', cart.read_text(errors='replace'), re.M)}
+    for resolved in root.glob('**/Package.resolved'):
+        text = resolved.read_text(errors='replace')
+        names |= set(re.findall(r'"identity"\s*:\s*"([^"]+)"', text)) | set(re.findall(r'"package"\s*:\s*"([^"]+)"', text))
+    for current, dirs, _ in os.walk(root):
+        for d in list(dirs):
+            if d.endswith(('.framework', '.xcframework')):
+                names.add(d.rsplit('.', 1)[0])
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', 'DerivedData', '.build')]
+    keys = set()
+    for name in names:
+        base = re.sub(r'^(swift|ios)-|-(ios|swift|sdk|spm)$', '', name.lower())
+        keys |= {norm(name), norm(base), norm(base.split('-')[0])}
+    return keys - {''}
+
+
+def extension_dirs(root, extra_excludes):
+    """Directories whose Info.plist declares an app extension; their code is a host target, like an app."""
+    found = set()
+    for plist in root.glob('**/*Info.plist'):
+        rel = plist.relative_to(root).as_posix()
+        if any(part in VENDOR_DIRS for part in plist.parts) or excluded(rel, extra_excludes):
+            continue
+        if 'NSExtension' in plist.read_text(errors='replace'):
+            found.add(Path(rel).parent.as_posix())
+    return found
+
+
+def has_build_file(root, d):
+    folder = root / d
+    return folder.is_dir() and any(c.name in BUILD_FILES or c.name.endswith(BUILD_SUFFIXES) for c in folder.iterdir())
 
 
 def parse(path):
@@ -135,7 +205,8 @@ def parse(path):
         imports.append((a or b, False, False))
     decls = DECL.findall(text)
     return {'loc': code_lines(text), 'imports': imports, 'decls': decls, 'public': len(PUBLIC.findall(text)),
-            'tokens': set(TOKEN.findall(text)), 'app_marker': bool(APP_MARKER.search(text))}
+            'tokens': set(TOKEN.findall(text)), 'app_marker': bool(APP_MARKER.search(text)),
+            'ui_code': bool(UI_CODE.search(text)), 'header_imports': set(OBJC_HEADER_IMPORT.findall(text))}
 
 
 def owner_dir(d):
@@ -148,6 +219,7 @@ def owner_dir(d):
 def discover(root, files, parsed, app_dirs):
     """Map imported Swift module names to target directories; unowned code falls to its top-level app directory."""
     imported = {name for p in parsed.values() for name, _, _ in p['imports']} - APPLE
+    vendors = vendor_names(root)
     wanted = {norm(n): n for n in imported}
     dirs = sorted({Path(rel).parent.as_posix() for rel in files})
     candidates = {}
@@ -166,6 +238,25 @@ def discover(root, files, parsed, app_dirs):
                 if norm(n) in wanted:
                     candidates.setdefault(base.as_posix(), wanted[norm(n)])
                     break
+    # A folder only becomes a module by name when nothing contradicts it: a vendor's module name, or a folder nested
+    # inside another candidate, needs its own build file. When one name matches several folders, a folder with a
+    # build file wins, then the shallowest.
+    built = {d: has_build_file(root, d) or has_build_file(root, Path(d).parent.as_posix()) for d in candidates}
+    for d in sorted(candidates, key=lambda d: len(Path(d).parts)):
+        if d not in candidates:
+            continue
+        nested = any(a.as_posix() in candidates for a in Path(d).parents)
+        if (nested or norm(candidates[d]) in vendors) and not built[d]:
+            del candidates[d]
+    by_name = defaultdict(list)
+    for d, name in candidates.items():
+        by_name[name].append(d)
+    for name, ds in by_name.items():
+        if len(ds) > 1:
+            keep = min(ds, key=lambda d: (not built[d], len(Path(d).parts), d))
+            for d in ds:
+                if d != keep and not built[d]:
+                    del candidates[d]
     unit_of = {}
     for rel in files:
         parent = Path(rel).parent
@@ -245,20 +336,26 @@ def sccs(nodes, graph):
 
 
 def groups_within(files):
-    """Descend through single dominant folders, then return top-level groups by code mass."""
+    """Group a module's files by folder, expanding any folder that holds most of the code into its children while its
+    siblings stay groups, so a wrapper folder (`Sources/`, `v6.0/`) never hides the folders beside it."""
     common = Path(os.path.commonpath([f for f, _ in files])) if len(files) > 1 else Path(files[0][0]).parent
-    prefix = common
-    while True:
-        mass = Counter()
-        for rel, loc in files:
-            parts = Path(rel).parts[len(prefix.parts):] if Path(rel).parts[:len(prefix.parts)] == prefix.parts else ('(outside)', '')
-            mass[parts[0] if len(parts) > 1 else '(files)'] += loc
-        total = sum(mass.values()) or 1
-        top, top_mass = mass.most_common(1)[0]
-        if top not in ('(files)', '(outside)') and top_mass / total > .8 and len(prefix.parts) < 12:
-            prefix = prefix / top
-            continue
-        return prefix.as_posix(), mass
+    groups = {common.as_posix(): files}
+    total = sum(loc for _, loc in files) or 1
+    for _ in range(12):
+        name, members = max(groups.items(), key=lambda kv: sum(loc for _, loc in kv[1]))
+        if sum(loc for _, loc in members) / total <= .6:
+            break
+        depth = len(Path(name).parts) if name not in ('', '.') else 0
+        children = defaultdict(list)
+        for rel, loc in members:
+            parts = Path(rel).parts
+            children[Path(*parts[:depth + 1]).as_posix() if len(parts) > depth + 1 else name + '/(files)'].append((rel, loc))
+        if len(children) == 1 and next(iter(children)).endswith('/(files)'):
+            break
+        del groups[name]
+        groups.update(children)
+    mass = Counter({g: sum(loc for _, loc in fs) for g, fs in groups.items()})
+    return common.as_posix(), mass, {rel: g for g, fs in groups.items() for rel, _ in fs}
 
 
 def divisibility(module_files, parsed):
@@ -266,16 +363,12 @@ def divisibility(module_files, parsed):
     files = [(rel, parsed[rel]['loc']) for rel in module_files]
     if len(files) < 20:
         return None
-    prefix, mass = groups_within(files)
+    prefix, mass, membership = groups_within(files)
     total = sum(mass.values()) or 1
-    major = [g for g, m in mass.items() if m / total >= .02 and g not in ('(files)', '(outside)')]
+    major = [g for g, m in mass.items() if m / total >= .02 and not g.endswith('(files)')]
     if len(major) < 3:
         return {'root': prefix, 'groups': len(major), 'density': None}
-    group_of = {}
-    root_parts = Path(prefix).parts
-    for rel, _ in files:
-        parts = Path(rel).parts[len(root_parts):] if Path(rel).parts[:len(root_parts)] == root_parts else ()
-        group_of[rel] = parts[0] if len(parts) > 1 and parts[0] in major else None
+    group_of = {rel: membership[rel] if membership[rel] in major else None for rel, _ in files}
     declared = defaultdict(set)
     for rel, g in group_of.items():
         if g:
@@ -307,7 +400,8 @@ def generic_role(name):
 
 def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
     root = Path(root).resolve()
-    files = dict(walk_sources(root, include_tests, excludes))
+    files = dict(walk_sources(root, include_tests, excludes, (mapping or {}).get('include_files')))
+    extensions = extension_dirs(root, excludes)
     parsed = {rel: parse(path) for rel, path in files.items()}
     if mapping:
         modules, assignment, unit_assignment = assign_from_map(files, mapping)
@@ -321,16 +415,25 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
     per = {mid: {'files': [], 'loc': 0, 'public': 0, 'third_party': Counter(), 'exported': set(), 'apple': Counter(),
                  'impl_imports': defaultdict(set), 'app_marker': False} for mid in modules}
     unit_deps, unit_loc, unit_vendors, unit_exported = defaultdict(set), Counter(), defaultdict(set), defaultdict(set)
+    # Edges seen only through `#import <X/Header.h>` can be a target including its own public-header namespace; cycle
+    # detection uses edges backed by a module import.
+    strong_deps, unit_files, unit_layer_files, unit_ui_files = defaultdict(set), Counter(), defaultdict(Counter), Counter()
     for rel, p in parsed.items():
         mid, unit = assignment[rel], unit_assignment[rel]
         row = per[mid]
-        row['files'].append(rel); row['loc'] += p['loc']; row['public'] += p['public']; row['app_marker'] |= p['app_marker']
-        unit_loc[unit] += p['loc']
+        row['files'].append(rel); row['loc'] += p['loc']; row['public'] += p['public']
+        row['app_marker'] |= p['app_marker'] or any(rel.startswith(d + '/') for d in extensions)
+        unit_loc[unit] += p['loc']; unit_files[unit] += 1; unit_ui_files[unit] += p['ui_code']
+        names = {name for name, _, _ in p['imports']}
+        for layer, frameworks in LAYERS.items():
+            unit_layer_files[unit][layer] += bool(names & frameworks) if layer != 'ui' else p['ui_code']
         for name, exported, testable in p['imports']:
             target = name_to_unit.get(name)
             if target:
                 if target != unit and target in unit_module:
                     unit_deps[unit].add(target)
+                    if name not in p['header_imports'] or sum(1 for n, _, _ in p['imports'] if n == name) > 1:
+                        strong_deps[unit].add(target)
                     if unit_module[target] != mid:
                         if exported:
                             row['exported'].add(unit_module[target]); unit_exported[unit].add(target)
@@ -364,7 +467,7 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
     n = len(ids)
     propagation = sum(len(dependents[m]) + 1 for m in ids) / (n * n) if n else 0
     mass_propagation = sum(unit_mass[u] * sum(unit_mass[d] for d in unit_dependents[u] | {u}) for u in units)
-    cycles = sccs(units, unit_deps)
+    cycles = sccs(units, strong_deps)
     # A module map's kinds are authoritative. Discovery infers hosts: an app has an entry point and no consumers; a
     # composition root is small wiring that only apps import. A sizeable feature importing many implementations is
     # the defect under audit, not a composition root.
@@ -376,9 +479,15 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
             kind = 'composition'
         modules[m] = {**modules[m], 'kind': kind}
 
+    def present(counts, files):
+        # A layer is present when a meaningful slice of files uses it, not when two stray files import a framework.
+        return sorted(layer for layer, count in counts.items() if count >= 3 or files and count / files >= .05 and count)
+
     def layer_set(m):
-        names = set(per[m]['apple']) | set(per[m]['third_party'])
-        return sorted(layer for layer, frameworks in LAYERS.items() if names & frameworks)
+        counts, files = Counter(), 0
+        for u in members[m]:
+            counts.update(unit_layer_files[u]); files += unit_files[u]
+        return present(counts, files)
 
     module_rows = {}
     for m in ids:
@@ -393,6 +502,7 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
                           'third_party': sorted(r['third_party']), 'exported': sorted(r['exported']),
                           'layers': layer_set(m), 'implementation_imports': bypass}
     hosts = {m for m in ids if modules[m]['kind'] in ('app', 'composition', 'unowned')}
+    excluded_names = {Path(e.rstrip('/')).name for e in excludes}
     library_mass = sum(mass[m] for m in ids if m not in hosts) or 1
     library_reach = {}
     for m in ids:
@@ -411,11 +521,12 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
         share = mass[m]
         if share >= .25 and (per[m]['loc'] >= 3000 or len(per[m]['files']) >= 20):
             split = divisibility(per[m]['files'], parsed)
-            dense = split and split.get('density') is not None and split['density'] >= .35
+            # Folders that reference each other in both directions cannot be extracted one at a time.
+            dense = split and split.get('density') is not None and (split['density'] >= .35 or split['mutual_pairs'] / split['possible_pairs'] >= .1)
             severity = 'high' if share >= .4 or share >= .25 and dense else 'medium'
             add('monolithic-module', [m], {'mass_share': round(share, 3), 'loc': per[m]['loc'], 'files': len(per[m]['files']),
                 'kind': module_rows[m]['kind'], 'divisibility': split}, severity,
-                f'{share:.0%} of first-party code in one target' + (f'; folder reference density {split["density"]:.0%}' if dense else ''))
+                f'{share:.0%} of first-party code in one target' + (f'; {split["mutual_pairs"]} of {split["possible_pairs"]} folder pairs reference each other' if dense else ''))
     # Contamination hub: a consumed target most library code depends on that drags dependencies, vendors or mixed layers along.
     # Hosts (app/composition/unowned) depend on everything by design, so reach counts library code only; dirt must sit
     # in the same target consumers import, which keeps an Implementation behind an Interface from counting.
@@ -424,8 +535,11 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
         for u in members[m]:
             reach_modules = {unit_module[d] for d in unit_dependents[u]} - {m} - hosts
             reach = sum(mass[d] for d in reach_modules) / library_mass
-            vendors = {v for v in unit_vendors[u] if v not in APPLE}
-            layers = sorted(layer for layer, fw in LAYERS.items() if unit_vendors[u] & fw)
+            # Only dragged vendors are dirt: ones most of the hub's consumers do not already import themselves.
+            consumers_u = [c for c in unit_consumers[u] if unit_module[c] not in hosts]
+            vendors = {v for v in unit_vendors[u] if v not in APPLE and v not in excluded_names
+                       and sum(v in unit_vendors[c] for c in consumers_u) < max(1, len(consumers_u)) / 2}
+            layers = present(unit_layer_files[u], unit_files[u])
             imposed = {unit_module[d] for d in unit_requires[u]} - {m}
             dirt = [k for k, ok in (('drags a dependency tree', len(imposed) >= max(8, .1 * n)),
                     ('drags vendors', len(vendors) >= 2), ('re-exports', bool(unit_exported[u])),
@@ -445,9 +559,10 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
         add('tangled-graph', {unit_module[u] for c in cycles for u in c}, {'cycles': cycles, 'largest_cycle': len(biggest)},
             'high', f'{len(cycles)} dependency cycle(s); largest spans {len(biggest)} modules')
     if n >= 8 and mass_propagation >= .3:
-        ripple = sorted((m for m in ids if m not in hosts and library_reach[m] >= .25), key=lambda m: -library_reach[m])
-        add('tangled-graph', ripple, {'propagation_cost': round(propagation, 3), 'mass_propagation_cost': round(mass_propagation, 3),
-            'ripple_modules': {m: round(library_reach[m], 3) for m in ripple}},
+        # Root the propagation at the modules that drive it most (own size × reach), not at every widely imported module.
+        ripple = sorted((m for m in ids if m not in hosts and library_reach[m] >= .25), key=lambda m: -mass[m] * library_reach[m])
+        add('tangled-graph', ripple[:10], {'propagation_cost': round(propagation, 3), 'mass_propagation_cost': round(mass_propagation, 3),
+            'ripple_modules': {m: round(library_reach[m], 3) for m in ripple[:10]}, 'widely_imported_modules': len(ripple)},
             'high' if mass_propagation >= .5 else 'medium', f'a change reaches {mass_propagation:.0%} of code on average')
     bypass = {m: sorted(module_rows[m]['implementation_imports']) for m in ids if module_rows[m]['implementation_imports']}
     if bypass:
@@ -458,8 +573,8 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
     for m in ids:
         row = module_rows[m]
         if m not in hosts and 'ui' in row['layers'] and len(row['layers']) >= 2 and (row['mass_share'] >= .03 or row['loc'] >= 3000):
-            mixed_files = sum(1 for rel in per[m]['files'] if len({l for l, fw in LAYERS.items()
-                              if {i[0] for i in parsed[rel]['imports']} & fw}) >= 2)
+            mixed_files = sum(1 for rel in per[m]['files'] if parsed[rel]['ui_code'] and
+                              {i[0] for i in parsed[rel]['imports']} & (LAYERS['persistence'] | LAYERS['networking']))
             if mixed_files < 3 and len(row['layers']) < 3:
                 continue
             add('mixed-concerns', [m], {'layers': row['layers'], 'mixed_files': mixed_files, 'mass_share': row['mass_share']},
@@ -489,7 +604,10 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
         owners = {m for ms in mechanisms.values() for m in ms}
         competing = families if concern != 'reactive' or len([f for f in families if f != 'Combine']) else {}
         vendor_parallel = len(competing) >= 2
-        protocol_parallel = len(mechanisms) >= 3 and len(owners) >= 2
+        # Infrastructure roles a codebase should have once can compete even inside one module; storage and analytics
+        # legitimately have several per-domain types, so they need more evidence.
+        protocol_parallel = (len(mechanisms) >= 3 and len(owners) >= 2 if concern in ('persistence', 'analytics')
+                             else len(mechanisms) >= 2)
         if not (vendor_parallel or protocol_parallel):
             continue
         touched = {m for ms in families.values() for m in ms} | owners
@@ -498,14 +616,14 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
         minority_mass, minority_modules = spreads[-2] if len(spreads) >= 2 else (0, 0)
         if vendor_parallel and minority_mass >= .15 and minority_modules >= 3 or protocol_parallel and len(mechanisms) >= 4 and len(owners) >= 3:
             severity = 'high'
-        elif vendor_parallel and (minority_modules >= 2 or minority_mass >= .05) or protocol_parallel:
+        elif vendor_parallel and (minority_modules >= 2 or minority_mass >= .05) or protocol_parallel and len(owners) >= 2:
             severity = 'medium'
         else:
             severity = 'low'
         add('parallel-abstractions', touched, {'concern': concern, 'vendor_families': families, 'generic_protocols': mechanisms,
             'minority_mass_share': round(minority_mass, 3), 'touched_mass_share': round(sum(mass[m] for m in touched), 3)}, severity,
             f'{concern}: ' + ', '.join(filter(None, [f'{len(competing)} competing libraries ({", ".join(sorted(competing))})' if vendor_parallel else '',
-                                                       f'{len(mechanisms)} generic protocols in {len(owners)} modules' if protocol_parallel else ''])))
+                                                       f'{len(mechanisms)} generic mechanisms in {len(owners)} module(s)' if protocol_parallel else ''])))
     order = {'high': 0, 'medium': 1, 'low': 2}
     candidates.sort(key=lambda c: (order[c['severity_floor']], -sum(mass.get(m, 0) for m in c['modules'])))
     top = sorted(ids, key=lambda m: -mass[m])
