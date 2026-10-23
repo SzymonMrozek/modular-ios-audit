@@ -72,7 +72,7 @@ The audit does not change application code. It distinguishes inspected facts, st
 
 ## Report
 
-- **Risk %** = severity-weighted share of modules that own or import an open defect, shown with the module counts ("Risk 39.2% · 37/40 modules involved") and a **LOW / MEDIUM / HIGH** band; no overall pass/fail gate.
+- **Risk %** per principle = severity-weighted share of modules that own or import its open defects; the headline is the worst principle ("Risk 33.8% · worst principle P1") with a **LOW / MEDIUM / HIGH** band and the modules involved across all principles as a count; no overall pass/fail gate.
 - A deterministic structure scan first. It routes monolithic targets, contamination hubs and mixed concerns to P1, parallel abstractions to P5 and tangled graphs to P7; every candidate is confirmed or dismissed before a score is shown.
 - Top problems ranked by risk, each with its defect modules and involved modules.
 - Individual principle scores, consequence weighting, coverage and check evidence.

@@ -14,6 +14,7 @@ RANK = {'low': 0, 'medium': 1, 'high': 2, 'critical': 3}
 PRINCIPLES = {f'P{i}' for i in range(1, 9)}
 DECISIONS = {'open', 'resolved', 'invalid', 'accepted'}
 METHOD = 'severity-weighted share of modules that own or directly import an open defect'
+WORST = 'risk of the worst principle; each principle is the severity-weighted share of modules that own or directly import its open defects'
 # Structure-scan archetypes and the principle whose evaluator confirms or dismisses them.
 OWNERS = {'monolithic-module': 'P1', 'contamination-hub': 'P1', 'mixed-concerns': 'P1', 'parallel-abstractions': 'P5', 'tangled-graph': 'P7'}
 MEDIUM_MIN, HIGH_MIN, TINY_MAX = Fraction(3, 100), Fraction(1, 10), Fraction(2, 100)
@@ -248,12 +249,23 @@ def score(data):
     unique = lambda fs: list({f['id']: (f, finding_principles[f['id']][0]) for f, _ in fs}.values())
 
     def overall(findings, field):
-        value = risk(unique(findings))
+        """The worst principle's risk; the union of involved modules stays a descriptive count."""
+        union = risk(unique(findings))
         known = all(p[field]['score'] is not None for p in included)
         withheld = 'structural candidates unresolved' if unresolved else None if known else 'unknown principle risk'
+        worst = None
+        for p in included if not withheld else ():
+            if worst is None or p[field]['units'] > worst[field]['units']:
+                worst = p
         if withheld:
-            value = numeric(None, units=None, involved_modules=None, method=value['method'])
-        return {**value, 'withheld': withheld, 'included_principles': [p['id'] for p in included],
+            value = numeric(None, units=None, method=WORST)
+        elif worst is None:
+            value = {**union, 'method': WORST}
+        else:
+            value = {**worst[field], 'method': WORST}
+        return {**value, 'withheld': withheld, 'worst_principle': worst['id'] if worst else None,
+                'worst_involved_modules': worst[field]['involved_modules'] if worst else None,
+                'involved_modules': None if withheld else union['involved_modules'], 'included_principles': [p['id'] for p in included],
                 'coverage_complete': not unresolved and all(not p['counts']['unassessed'] and not p['check_unknowns'] for p in included),
                 'coverage_min': min((p['coverage'] for p in included if p['coverage'] is not None), default=None)}
     adjusted, observed = overall(all_open, 'risk'), overall(all_observed, 'observed_risk')

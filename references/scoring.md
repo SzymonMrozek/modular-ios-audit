@@ -1,6 +1,6 @@
 # Risk scoring
 
-Read before mapping modules or dispatching evaluators. The headline answers one question a reader can check against the counts on the page: **what share of the modules own or directly import an open defect, weighted by how serious it is?** Fourteen defect modules reaching 36 of 40 modules must read as HIGH, never as a small number. Scores are project policy, not industry benchmarks or a probability of failure.
+Read before mapping modules or dispatching evaluators. Each principle answers one question a reader can check against the counts on the page: **what share of the modules own or directly import its open defects, weighted by how serious they are?** The headline is the worst principle. Fourteen defect modules reaching 36 of 40 modules must read as HIGH, never as a small number. Scores are project policy, not industry benchmarks or a probability of failure.
 
 ## Scope and inventory
 
@@ -46,17 +46,17 @@ A module is **involved** when it owns or directly imports an open defect. Each i
 
 `risk = Σ over involved modules of maxWeight / number of eligible modules`
 
-- **Overall risk** (the headline) applies this across every principle: "Risk 39.2% · 37/40 modules involved".
-- **Principle risk** applies it to that principle's findings only: "P1 · defects in 14/40 · 36/40 involved · 33.8%".
+- **Principle risk** applies it to that principle's findings: "P1 · defects in 14/40 · 36/40 involved · 33.8%".
+- **Overall risk** (the headline) is the **worst principle's risk**: "Risk 33.8% · worst principle P1 One clear responsibility". It never exceeds the rows below it. The union of involved modules across all principles ("37/40 modules involved across all principles") and the defect-module count stay beside it as counts, not as the score: added across eight principles they read like a sum and would put a repository with only moderate principle rows into HIGH.
 - **Finding impact** applies it to one finding; `ranking` orders findings by impact, structural first on ties. The report lists the top five as "Top problems by risk" with principle, severity, defect modules and involved modules.
 
 Splitting one problem into several findings cannot raise the score, and a module with several defects still counts once. A cross-tagged identical finding counts once. External-only P7 enforcement keeps rule-family counts and never enters risk.
 
 Bands use the exact fraction: **LOW < 3%, MEDIUM 3–< 10%, HIGH ≥ 10%**. There is no derived health index; show the risk percentage with the module counts it comes from.
 
-The score is **withheld** (N/A) while any structural candidate of a selected principle is unresolved, or any included principle's risk is unknown. Never average only the known parts.
+The score is **withheld** (N/A) while any structural candidate of a selected principle is unresolved, or any included principle's risk is unknown. Never take the worst of only the known parts.
 
-Calibration from full audits: an Interface/Implementation-modularized app with a design-system umbrella imported by 24 of 64 modules → 23.8% (41/64 involved, defects in 23); a feature-modular app with a shared umbrella imported by 31 of 40 modules → 39.2% (37/40 involved, defects in 26). Both are HIGH; the principle rows and top problems show where the difference lies.
+Calibration from full audits (worst principle; union of involved modules in brackets): an Interface/Implementation-modularized app with a design-system umbrella imported by 24 of 64 modules → 20.0% HIGH, P1 (41/64); the same app after splitting the umbrella into per-component modules → 6.7% MEDIUM, P8 (56/153); a feature-modular app with a shared umbrella imported by 31 of 40 modules → 33.8% HIGH, P1 (37/40).
 
 ## Compact findings and review choices
 

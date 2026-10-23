@@ -78,7 +78,11 @@
     const overall = (fs, field) => {
       const known = included.every(p => p[field].score !== null);
       const withheld = unresolved.length ? 'structural candidates unresolved' : known ? null : 'unknown principle risk';
-      return {...(withheld ? {...measure(null, N), units: null, involved_modules: null} : risk(unique(fs))), withheld, included_principles: included.map(p => p.id),
+      const union = risk(unique(fs));
+      const worst = withheld ? null : included.reduce((best, p) => best === null || p[field].units > best[field].units ? p : best, null);
+      const value = withheld ? {...measure(null, N), units: null} : worst === null ? {...union} : {...worst[field]};
+      return {...value, withheld, worst_principle: worst?.id ?? null, worst_involved_modules: worst ? worst[field].involved_modules : null,
+        involved_modules: withheld ? null : union.involved_modules, included_principles: included.map(p => p.id),
         coverage_complete: !unresolved.length && included.every(p => !p.counts.unassessed && !(data.principles.find(source => source.id === p.id).check_unknowns || []).length),
         coverage_min: included.some(p => p.coverage !== null) ? Math.min(...included.filter(p => p.coverage !== null).map(p => p.coverage)) : null};
     };
@@ -139,12 +143,13 @@
     const result = compute({...original, ...state}), scores = document.getElementById('scores');
     if (scores) {
       scores.replaceChildren(); const verdict = text(scores, 'div', '', 'verdict'), N = result.total;
-      text(verdict, 'h2', result.risk.withheld ? `Risk withheld · ${result.risk.withheld}` : `Risk ${percent(result.risk)} · ${result.risk.involved_modules}/${N} modules involved`);
+      const worst = result.risk.worst_principle, worstTitle = worst ? `${worst} ${original.principles.find(p => p.id === worst)?.title || ''}`.trim() : '';
+      text(verdict, 'h2', result.risk.withheld ? `Risk withheld · ${result.risk.withheld}` : worst ? `Risk ${percent(result.risk)} · worst principle ${worstTitle}` : `Risk ${percent(result.risk)}`);
       chip(verdict, result.risk).setAttribute('aria-label', 'Overall risk band');
       const recalculate = text(verdict, 'button', 'Recalculate'); recalculate.type = 'button'; recalculate.id = 'audit-recalculate'; recalculate.dataset.recalculate = ''; recalculate.addEventListener('click', () => { persist(); render(); });
       text(verdict, 'span', result.risk.coverage_complete ? 'Coverage: complete' : 'Coverage: partial', 'fact-chip');
       const facts = text(scores, 'div', '', 'score-overall');
-      for (const label of [`Defects in ${result.rootCostModules ?? '?'}/${N} modules`, `Before review choices ${percent(result.observed_risk)}`, `${N}/${result.inventory_total} modules in scope`,
+      for (const label of [`${result.risk.involved_modules ?? '?'}/${N} modules involved across all principles`, `Defects in ${result.rootCostModules ?? '?'}/${N} modules`, `Before review choices ${percent(result.observed_risk)}`, `${N}/${result.inventory_total} modules in scope`,
         result.risk.coverage_min !== null ? `Lowest principle classification ${Math.floor(result.risk.coverage_min * 100)}%` : 'Classification unknown',
         result.structural.screened ? `Structural candidates ${result.structural.candidates - result.structural.unresolved.length}/${result.structural.candidates} resolved` : 'Structure scan missing']) text(facts, 'span', label);
       const st = result.structure;
@@ -168,7 +173,7 @@
         const value = text(row, 'div', ''); chip(value, p.risk); text(value, 'strong', p.external ? `${p.external_enforcement.failed}/${p.external_enforcement.evaluated_families} failed checks` : percent(p.risk));
         if (!p.external) text(value, 'span', 'Before review ' + percent(p.observed_risk), 'score-sub'); text(text(row, 'div', ''), 'span', p.gate.toUpperCase(), 'gate ' + p.gate);
       }
-      const key = text(scores, 'div', '', 'score-key score-policy'); text(key, 'span', 'Risk = severity-weighted share of modules that own or directly import an open defect (low 0.1 · medium 0.4 · high and critical 1.0). Each module counts once, at its strongest open defect. LOW < 3% · MEDIUM < 10% · HIGH ≥ 10%.');
+      const key = text(scores, 'div', '', 'score-key score-policy'); text(key, 'span', "Overall risk = the worst principle's risk. Principle risk = severity-weighted share of modules that own or directly import its open defects (low 0.1 · medium 0.4 · high and critical 1.0); each module counts once, at its strongest defect. LOW < 3% · MEDIUM < 10% · HIGH ≥ 10%.");
     }
     for (const p of result.principles) {
       if (p.gate === 'skipped') continue;

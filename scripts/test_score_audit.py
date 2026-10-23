@@ -114,8 +114,15 @@ class AuditTests(unittest.TestCase):
         d = plain(); d['principles'][0]['findings'].append(finding('second', ['M0'], 'medium'))
         self.assertAlmostEqual(score(d)['risk']['score'], 1 / 2)
         principle(d, 'P3', [finding('p3', ['M0', 'M1'], 'medium')])
-        s = score(d); self.assertAlmostEqual(s['risk']['score'], (1 + .4) / 2); self.assertEqual(s['risk']['involved_modules'], 2)
+        s = score(d); self.assertAlmostEqual(s['risk']['score'], 1 / 2); self.assertEqual(s['risk']['worst_principle'], 'P1'); self.assertEqual(s['risk']['involved_modules'], 2)
         self.assertAlmostEqual(s['principles'][0]['risk']['score'], 1 / 2); self.assertAlmostEqual(s['principles'][1]['risk']['score'], .4)
+
+    def test_overall_is_the_worst_principle_with_union_counts(self):
+        d = sample(severity='low', affected=20); principle(d, 'P3', [finding('p3', ['Modules/M50'], 'medium')])
+        s = score(d); self.assertEqual(s['risk']['worst_principle'], 'P2'); self.assertAlmostEqual(s['risk']['score'], .021)
+        self.assertEqual(s['risk']['involved_modules'], 22); self.assertEqual(s['risk']['worst_involved_modules'], 21)
+        d['decisions'] = {'unit-contract': {'status': 'resolved'}}; s = score(d)
+        self.assertEqual(s['risk']['worst_principle'], 'P3'); self.assertAlmostEqual(s['risk']['score'], .004)
 
     def test_cross_tagged_finding_counts_once(self):
         d = plain(); same = copy.deepcopy(d['principles'][0]['findings'][0]); principle(d, 'P3', [same])
@@ -234,7 +241,7 @@ class AuditTests(unittest.TestCase):
         d = sample(); d['principles'][0]['findings'][0]['severity_reason'] = '</script><script>alert(1)</script>'
         html = '<html><body><section class="scoreboard" id="scores"></section><section id="p2"><details id="unit-contract"><section id="unit-contract-fix"></section><details id="unit-contract-evidence"></details></details></section></body></html>'
         output = prepare(d, html); self.assertEqual(output.count('id="audit-data"'), 1); self.assertNotIn('</script><script>alert(1)</script>', output)
-        self.assertEqual(prepare(d, output), output); self.assertIn(identity(d), output); self.assertIn('Risk 2.1% · 21/100 modules involved', output)
+        self.assertEqual(prepare(d, output), output); self.assertIn(identity(d), output); self.assertIn('Risk 2.1% · worst principle P2', output)
         with self.assertRaises(ValueError): prepare(d, '<html><body></body></html>')
 
     @unittest.skipUnless(shutil.which('node'), 'Node unavailable; browser projection parity not run')
