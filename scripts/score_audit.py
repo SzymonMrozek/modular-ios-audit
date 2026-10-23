@@ -13,11 +13,14 @@ SEVERITIES = set(UNITS)
 RANK = {'low': 0, 'medium': 1, 'high': 2, 'critical': 3}
 PRINCIPLES = {f'P{i}' for i in range(1, 9)}
 DECISIONS = {'open', 'resolved', 'invalid', 'accepted'}
-METHOD = 'severity-weighted share of modules that own or directly import an open defect'
+METHOD = 'severity-weighted share of modules that own or are reached by an open defect'
+EXPOSURES = {'importers', 'verified', 'owners'}
 WORST = 'risk of the worst principle; each principle is the severity-weighted share of modules that own or directly import its open defects'
 # Structure-scan archetypes and the principle whose evaluator confirms or dismisses them.
 OWNERS = {'monolithic-module': 'P1', 'contamination-hub': 'P1', 'mixed-concerns': 'P1', 'parallel-abstractions': 'P5', 'tangled-graph': 'P7'}
 MEDIUM_MIN, HIGH_MIN, TINY_MAX = Fraction(3, 100), Fraction(1, 10), Fraction(2, 100)
+# Below this many modules one module is ≥10% of the denominator, so any medium finding in it reads HIGH.
+SMALL_INVENTORY = 10
 
 
 def band(value):
@@ -71,18 +74,28 @@ def score(data):
             raise ValueError('Disagreeing legacy and canonical roots: ' + f['id'])
         return roots
 
-    def exposure(roots, implementation_only=False):
-        roots = set(roots) & eligible
-        if not complete:
-            return None
-        return roots if implementation_only else roots | set().union(*(set(consumers[r]) & eligible for r in roots))
+    def exposure_mode(f):
+        mode = f.get('exposure', 'owners' if f.get('implementation_only') is True else 'importers')
+        if mode not in EXPOSURES:
+            raise ValueError('Unknown exposure mode: ' + f['id'])
+        return mode
 
-    def metrics(roots, external=False, implementation_only=False, spreading=None):
-        """Footprint of roots; only `spreading` roots (default: all, none when implementation_only) reach consumers."""
-        roots = sorted(set(roots) & eligible)
-        spreading = set() if implementation_only else set(roots) if spreading is None else set(spreading) & eligible
+    def reached(f):
+        """Modules besides the owners that the defect reaches: every importer, verified consumers only, or none."""
+        roots, mode = set(root_ids(f)) & eligible, exposure_mode(f)
+        if mode == 'owners':
+            return set()
+        if mode == 'verified':
+            return set(f['reach_modules']) & eligible - roots
+        return set().union(*(set(consumers[r]) & eligible for r in roots))
+
+    def severity(f, pid):
+        return f.get('principle_severity', {}).get(pid, f['severity'])
+
+    def metrics(findings, external=False):
+        roots = sorted(set().union(*(set(root_ids(f)) for f in findings)) & eligible)
         available = complete and not external and bool(eligible)
-        affected = sorted(set().union(*(set(consumers[r]) & eligible for r in spreading))) if available else None
+        affected = sorted(set().union(*(reached(f) for f in findings))) if available else None
         exposed = set(roots) | set(affected) if available else None
         reach = Fraction(len(exposed), total) if available else None
         return {'rootCostModules': None if external else len(roots), 'rootCostModuleIDs': roots,
@@ -90,7 +103,7 @@ def score(data):
                 'impact': numeric(reach, scope='external-only' if external else 'module', total_modules=len(eligible),
                     exposed_modules=len(exposed) if exposed is not None else None, graph_inventory_complete=complete,
                     missing_root_graph=[r for r in roots if r not in consumers],
-                    meaning='Share of modules owning or directly importing the defect, before severity')}
+                    meaning='Share of modules owning or reached by the defect, before severity')}
 
     def risk(findings, external=False):
         """Each involved module counts once, at the strongest open consequence that reaches it; divided by the module count."""
@@ -98,8 +111,8 @@ def score(data):
             return numeric(None, units=None, involved_modules=None, method=METHOD)
         values = {}
         for f, _ in findings:
-            for module in exposure(root_ids(f), f.get('implementation_only') is True):
-                values[module] = max(values.get(module, 0), UNITS[f['severity']])
+            for module in (set(root_ids(f)) & eligible) | reached(f):
+                values[module] = max(values.get(module, 0), UNITS[severity(f, pid)])
         units = sum(values.values())
         return numeric(Fraction(units, 10 * total), units=units, involved_modules=len(values), method=METHOD)
 
@@ -163,6 +176,10 @@ def score(data):
                 raise ValueError('Invalid consumer reach: ' + fid)
             if not roots and not f['external_scopes']:
                 raise ValueError('Finding needs root-cost modules or external scope')
+            overrides = f.get('principle_severity', {})
+            if not isinstance(overrides, dict) or not set(overrides) <= PRINCIPLES or not set(overrides.values()) <= SEVERITIES:
+                raise ValueError('principle_severity maps principle IDs to severities: ' + fid)
+            exposure_mode(f)
             linked = f.get('candidate_ids', [])
             if set(linked) - set(candidates):
                 raise ValueError('Finding links unknown structural candidates: ' + fid)
@@ -179,16 +196,16 @@ def score(data):
                         open_findings.append((f, pid))
             external = not roots and bool(f['external_scopes'])
             active = in_scope and kind == 'issue' and decision['status'] == 'open'
-            implementation_only = f.get('implementation_only') is True
+            own_severity = severity(f, pid)
             original_risk = risk([(f, pid)] if kind == 'issue' and in_scope else [], external)
-            tiny = original_risk['score'] is not None and Fraction(original_risk['units'], 10 * total) < TINY_MAX and f['severity'] in ('low', 'medium')
+            tiny = original_risk['score'] is not None and Fraction(original_risk['units'], 10 * total) < TINY_MAX and own_severity in ('low', 'medium')
             presentation = 'suggestion' if kind == 'suggestion' else 'tiny' if tiny else 'issue'
-            rows.append({'id': fid, 'kind': kind, 'presentation': presentation, 'severity': f['severity'], 'severity_reason': f['severity_reason'],
+            rows.append({'id': fid, 'kind': kind, 'presentation': presentation, 'severity': own_severity, 'severity_reason': f['severity_reason'],
                          'structural': bool(linked), 'archetype': f.get('archetype'), 'candidate_ids': linked, 'severity_floor': floor,
-                         'implementation_only': implementation_only, 'decision': decision, 'in_scope': in_scope, 'active': active,
-                         'observed': metrics(roots if in_scope and kind == 'issue' else [], external, implementation_only),
-                         'consequence_weight': UNITS[f['severity']] / 10 if kind == 'issue' else 0,
-                         **metrics(roots if active else [], external, implementation_only), 'risk': risk([(f, pid)] if active else [], external),
+                         'exposure': exposure_mode(f), 'decision': decision, 'in_scope': in_scope, 'active': active,
+                         'observed': metrics([f] if in_scope and kind == 'issue' else [], external),
+                         'consequence_weight': UNITS[own_severity] / 10 if kind == 'issue' else 0,
+                         **metrics([f] if active else [], external), 'risk': risk([(f, pid)] if active else [], external),
                          'observed_risk': original_risk})
         external = p.get('scoring_scope') == 'external-only' or bool(findings) and all(not root_ids(f) for f in findings)
         if external and owner_union:
@@ -209,11 +226,8 @@ def score(data):
                 raise ValueError('Invalid/duplicate enforcement family: ' + pid)
             case_ids.add(case['id']); families.add(case['family'])
         enforcement = {'evaluated_families': len(cases), **{state: sum(c['outcome'] == state for c in cases) for state in ('failed', 'passed', 'unknown')}, 'cases': cases}
-        open_roots = set().union(*(set(root_ids(f)) & eligible for f, _ in open_findings))
-        observed_roots = owner_union & eligible
-        spread = lambda fs: set().union(*(set(root_ids(f)) for f, _ in fs if f.get('implementation_only') is not True))
         current_risk, observed_risk = risk(open_findings, external), risk(observed_findings, external)
-        attention = bool(hard or enforcement['failed'] or any(f['severity'] == 'critical' for f, _ in open_findings))
+        attention = bool(hard or enforcement['failed'] or any(severity(f, pid) == 'critical' for f, _ in open_findings))
         unresolved = any(c['principle'] == pid and cid not in resolutions for cid, c in candidates.items())
         if current_risk['band'] == 'HIGH':
             gate = 'fail'
@@ -225,8 +239,9 @@ def score(data):
             gate = 'watch'
         else:
             gate = 'pass'
-        observed_spread = set().union(*(set(root_ids(f)) for f in findings if f.get('kind', 'issue') == 'issue' and f.get('implementation_only') is not True))
-        results.append({'id': pid, **metrics(open_roots, external, spreading=spread(open_findings)), 'observed': metrics(observed_roots, external, spreading=observed_spread),
+        issues = [f for f in findings if f.get('kind', 'issue') == 'issue']
+        results.append({'id': pid, **metrics([f for f, _ in open_findings], external), 'observed': metrics(issues, external),
+                        'open_issues': len(open_findings), 'observed_issues': len(observed_findings),
                         'risk': current_risk, 'observed_risk': observed_risk, 'total': len(eligible), 'counts': counts,
                         'applicable': applicable, 'coverage': (counts['issue'] + counts['clear']) / applicable if applicable else None,
                         'accepted_findings': sum(f['kind'] == 'issue' and f['in_scope'] and f['decision']['status'] == 'accepted' for f in rows),
@@ -287,8 +302,9 @@ def score(data):
             'consequence_weights': {k: v / 10 for k, v in UNITS.items()}, 'overall_gate': legacy,
             'scope': 'full' if seen == PRINCIPLES and 'skipped' not in gates else 'partial',
             'inventory_total': len(modules), 'total': len(eligible), 'excluded_modules': exclusions,
-            'decisions': decisions, **metrics(set().union(*(set(root_ids(f)) for f, _ in all_open)), external_only, spreading=spread(all_open)),
-            'observed': metrics(set().union(*(set(root_ids(f)) for f, _ in all_observed)), external_only, spreading=spread(all_observed)),
+            'decisions': decisions, **metrics([f for f, _ in all_open], external_only),
+            'observed': metrics([f for f, _ in all_observed], external_only),
+            'small_inventory': len(eligible) < SMALL_INVENTORY,
             'risk': adjusted, 'observed_risk': observed, 'ranking': ranked,
             'structural': {'screened': structural is not None, 'candidates': len(in_review), 'unresolved': unresolved,
                            'confirmed': sorted(c for c, r in resolutions.items() if r['status'] == 'confirmed'),

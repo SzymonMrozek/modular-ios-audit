@@ -35,14 +35,17 @@ Findings that confirm a structural candidate must meet its `severity_floor` unle
 
 ## Exposure and risk
 
-`rootCostModuleIDs` are evidenced defect owners. A finding **exposes** its roots plus their direct consumers (`affectedModuleIDs`). Owners count: a defect in a leaf or app target still exposes that target's code.
+`rootCostModuleIDs` are evidenced defect owners. Owners always count: a defect in a leaf or app target still exposes that target's code. Who else a defect reaches is set per finding with `exposure`:
 
-Root the defect where it lives:
+| `exposure` | Reaches | Use when |
+|---|---|---|
+| `importers` (default) | every direct importer of the roots | every importer inherits the defect: an umbrella or two-role module, a contamination hub, a leaked representation in the module's core contract |
+| `verified` | the roots plus `reach_modules` (consumers the evaluator traced) | the defect sits in one API of a widely imported module and only some importers use it; list those importers in `reach_modules` |
+| `owners` | the roots only | the importers do not inherit it: an edge or manifest defect (undeclared, forbidden or cyclic import), or a defect behind an interface that consumers never import (`implementation_only: true` is the legacy spelling) |
 
-- An edge or manifest defect (undeclared, forbidden or cyclic import) is rooted at the **importing** module. If that importer is outside the inventory (e.g. a test-only target), record it under `external_scopes` with no roots.
-- A defect that lives only in an implementation target which consumers reach through an interface sets `implementation_only: true`: it exposes its owner, not the interface's consumers.
+Root the defect where it lives. An edge or manifest defect is rooted at the **importing** module with `exposure: owners`: the importer's own consumers are not affected by its undeclared import. If that importer is outside the inventory (e.g. a test-only target), record it under `external_scopes` with no roots. Targets that consumers reach only through another target of the same module (Data or Assembly behind Domain, Implementation behind Interface) count as behind an interface.
 
-A module is **involved** when it owns or directly imports an open defect. Each involved module counts once, at the strongest open defect that reaches it:
+A module is **involved** when it owns or is reached by an open defect. Each involved module counts once, at the strongest open defect that reaches it:
 
 `risk = Σ over involved modules of maxWeight / number of eligible modules`
 
@@ -50,9 +53,11 @@ A module is **involved** when it owns or directly imports an open defect. Each i
 - **Overall risk** (the headline) is the **worst principle's risk**: "Risk 33.8% · worst principle P1 One clear responsibility". It never exceeds the rows below it. The union of involved modules across all principles ("37/40 modules involved across all principles") and the defect-module count stay beside it as counts, not as the score: added across eight principles they read like a sum and would put a repository with only moderate principle rows into HIGH.
 - **Finding impact** applies it to one finding; `ranking` orders findings by impact, structural first on ties. The report lists the top five as "Top problems by risk" with principle, severity, defect modules and involved modules.
 
-Splitting one problem into several findings cannot raise the score, and a module with several defects still counts once. A cross-tagged identical finding counts once. External-only P7 enforcement keeps rule-family counts and never enters risk.
+Splitting one problem into several findings cannot raise the score, and a module with several defects still counts once. A cross-tagged identical finding counts once. When one cause is cross-tagged but its consequence differs by principle, keep the record identical and set `principle_severity: {"P8": "low"}`; each principle row then weighs it at its own severity. Principle rows also show their open issue count, because several issues on the same module do not add risk. External-only P7 enforcement keeps rule-family counts and never enters risk.
 
 Bands use the exact fraction: **LOW < 3%, MEDIUM 3–< 10%, HIGH ≥ 10%**. There is no derived health index; show the risk percentage with the module counts it comes from.
+
+With fewer than 10 eligible modules (`small_inventory: true`) one module is at least 10% of the denominator, so any medium finding in the app reads HIGH and the score saturates on the host. The report says so; compare such repositories by their issue counts and principle rows, not by the headline alone.
 
 The score is **withheld** (N/A) while any structural candidate of a selected principle is unresolved, or any included principle's risk is unknown. Never take the worst of only the known parts.
 
@@ -86,7 +91,7 @@ Per-principle numeric HIGH is a local Fail; unknown classifications/checks, or u
 
 Run `python3 scripts/structure_scan.py <repo> --output structure.json` first, then `python3 scripts/score_audit.py audit-data.json --output scores.json`. Python stdlib is enough.
 
-Audit data retains `modules`, `consumers`, `consumer_graph_complete`, provenance, optional `module_weights` (a fact, not a weight), `structure` (scan output), `structural` (`candidates` from the scan, each with its owning `principle`, and `resolutions`) and `principles`. Optional `excluded_modules` and `decisions` default empty. Findings require `id`, `severity`, `severity_reason`, `rootCostModuleIDs`, `reach_modules`, `external_scopes`, `evidence`; Findings confirming candidates add `archetype` and `candidate_ids`; `implementation_only` is optional. Ledger rows require status/basis. Legacy `hard_gates` stay check observations. `scoring_scope: external-only` and per-family `enforcement_cases` keep P7's separate denominator. Audits without `structural` still score but report `structural.screened: false`; never deliver one as a complete audit.
+Audit data retains `modules`, `consumers`, `consumer_graph_complete`, provenance, optional `module_weights` (a fact, not a weight), `structure` (scan output), `structural` (`candidates` from the scan, each with its owning `principle`, and `resolutions`) and `principles`. Optional `excluded_modules` and `decisions` default empty. Findings require `id`, `severity`, `severity_reason`, `rootCostModuleIDs`, `reach_modules`, `external_scopes`, `evidence`; findings confirming candidates add `archetype` and `candidate_ids`; `exposure` and `principle_severity` are optional. Ledger rows require status/basis. Legacy `hard_gates` stay check observations. `scoring_scope: external-only` and per-family `enforcement_cases` keep P7's separate denominator. Audits without `structural` still score but report `structural.screened: false`; never deliver one as a complete audit.
 
 The scorer rejects duplicate IDs, unknown modules, self edges, conflicting cross-tags, confirmations that name no finding in the owning principle, findings below their structural floor without a reason, dismissals without evidence, and custom thresholds.
 

@@ -3,7 +3,7 @@
 from pathlib import Path
 import tempfile
 import unittest
-from structure_scan import scan
+from structure_scan import excluded, groups_within, scan
 
 
 def write(root, path, imports, body):
@@ -39,7 +39,7 @@ def messy_repo(root):
         write(root, f'Common/Sources/Common{i}.swift', ['UIKit', 'CoreData', 'Alamofire', 'Kingfisher', 'Logging', 'Analytics'],
               lines(f'Shared{i}', 70))
     for i in range(3):
-        write(root, f'Common/Sources/Mixed{i}.swift', ['UIKit', 'CoreData'], lines(f'Mixed{i}', 5))
+        write(root, f'Common/Sources/Mixed{i}.swift', ['UIKit', 'CoreData'], f'class Mixed{i}Controller: UIViewController {{}}\n' + lines(f'Mixed{i}', 5))
     write(root, 'Analytics/Sources/Tracker.swift', ['Common'], 'public protocol Tracker {}\n' + lines('Tracker', 10))
     write(root, 'Logging/Sources/Logger.swift', ['Analytics'], lines('Logger', 10))
     for name in ['Profile', 'Search', 'Chat']:
@@ -97,6 +97,51 @@ class StructureScanTests(unittest.TestCase):
             result = scan(root)
         self.assertEqual(result['modules']['Checkout']['kind'], 'library')
         self.assertEqual(len(result['modules']['Checkout']['implementation_imports']), 4)
+
+    def test_excludes_match_components_files_and_globs(self):
+        for rel, pattern, expected in [('RecurringBuy/A.swift', 'RecurringBuy/', True), ('RecurringBuyFlow/A.swift', 'RecurringBuy', False),
+                                       ('RecurringBuyFlow/A.swift', 'RecurringBuy/', False), ('Api/SecretApiLayer8.swift', 'Api/SecretApiLayer*.swift', True),
+                                       ('Utils/Locale+More.swift', 'Utils/Locale+More.swift', True)]:
+            self.assertEqual(excluded(rel, [pattern]), expected, (rel, pattern))
+        with tempfile.TemporaryDirectory() as root:
+            clean_repo(root)
+            result = scan(root, excludes=['Modules/Values/'])
+        self.assertNotIn('Modules/Values', result['modules'])
+
+    def test_vendor_names_and_nested_folders_do_not_become_modules(self):
+        with tempfile.TemporaryDirectory() as root:
+            clean_repo(root)
+            Path(root, 'Package.resolved').write_text('{"pins": [{"identity": "swift-collections"}]}')
+            write(root, 'App/Sources/Collections/Grid.swift', ['SwiftUI'], lines('Grid', 40))
+            write(root, 'App/Sources/Uses.swift', ['Collections'], lines('Uses', 2))
+            write(root, 'Modules/Feed/Implementation/Sources/Values/Local.swift', [], lines('Local', 20))
+            Path(root, 'Modules/Values/Project.swift').write_text('// manifest')
+            result = scan(root)
+        self.assertNotIn('App/Sources/Collections', result['modules'])
+        self.assertEqual(result['modules']['Modules/Values']['loc'], 14)
+
+    def test_extension_info_plist_marks_a_host(self):
+        with tempfile.TemporaryDirectory() as root:
+            clean_repo(root)
+            write(root, 'NotificationService/NotificationService.swift', ['UserNotifications', 'Values'], 'class NotificationService: UNNotificationServiceExtension {}\n')
+            Path(root, 'NotificationService/Info.plist').write_text('<key>NSExtension</key><dict><key>NSExtensionPrincipalClass</key></dict>')
+            result = scan(root)
+        self.assertEqual(result['modules']['NotificationService']['kind'], 'app')
+
+    def test_dominant_folder_keeps_its_siblings_as_groups(self):
+        files = [(f'Code/v6.0/Feature{i}/F.swift', 100) for i in range(4)] + [('Code/Networking/W.swift', 60), ('Code/UI/V.swift', 60)]
+        _, mass, membership = groups_within(files)
+        self.assertIn('Code/Networking', mass); self.assertIn('Code/v6.0/Feature0', mass)
+        self.assertEqual(membership['Code/UI/V.swift'], 'Code/UI')
+
+    def test_objc_header_namespace_imports_do_not_form_cycles(self):
+        with tempfile.TemporaryDirectory() as root:
+            write(root, 'Svg/Sources/Svg.swift', ['LegacyImpl'], lines('Svg', 10))
+            Path(root, 'Svg/LegacyImpl/Sources').mkdir(parents=True)
+            Path(root, 'Svg/LegacyImpl/Sources/Legacy.m').write_text('#import <Svg/Svg.h>\n@implementation Legacy\n@end\n')
+            write(root, 'App/Main.swift', ['Svg'], '@main\nstruct Main {}\n')
+            result = scan(root)
+        self.assertEqual(result['repository']['cycles'], 0)
 
     def test_module_map_overrides_discovery(self):
         with tempfile.TemporaryDirectory() as root:

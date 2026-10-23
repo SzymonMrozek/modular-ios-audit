@@ -4,7 +4,7 @@ description: Audit an iOS codebase for modular architecture health. Runs a deter
 license: MIT
 compatibility: Requires repository read and shell access, Python 3.10+, and Pygments for highlighted diffs. Independent evaluations require subagents. Browser tooling is optional.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # Modular iOS audit
@@ -82,6 +82,8 @@ Do not give principle evaluators the scan candidates, suspected findings or othe
 
 ### Evaluator return contract
 
+Return a short Markdown summary and a machine-readable JSON file with the same content: `findings` in the audit-data finding schema ([scoring.md](references/scoring.md)), `ledger`, `resolutions` for structural candidates, `excluded` and `limitations`. Reconciliation merges the JSON files; it does not re-type findings from prose. Every `kind: issue` finding includes its `fix_example` before it is scored; send it back to its evaluator if one is missing. If an evaluator is interrupted (rate or session limits), resume it with its saved state rather than starting a fresh one.
+
 Return these fields concisely:
 
 ```text
@@ -96,7 +98,7 @@ findings:
     kind: issue | suggestion, justified by a traced consequence or its absence
     severity: low | medium | high | critical, using the anchors in scoring.md, with consequence-based reason (independent of graph popularity)
     archetype, candidate_ids, floor_override_reason: findings that confirm structural candidates; see structure-scan.md
-    implementation_only: true when the defect lives only in an implementation target that consumers reach through an interface
+    exposure: importers | verified | owners — who besides the roots inherits the defect; see scoring.md
     rootCostModuleIDs: unique module identities containing the defect, with evidence
     reach_modules: verified semantic consumers; affectedModuleIDs are computed separately from the frozen direct-consumer graph
     external_scopes: app targets/tooling outside the module inventory
