@@ -1,6 +1,6 @@
 ---
 name: modular-ios-audit
-description: Audit an iOS codebase for modular architecture health. Runs a deterministic structure scan, then evaluates eight principles with a dedicated evaluator each — routing structural problems (monolithic targets, contamination hubs, mixed concerns, parallel abstractions, tangled graphs) to the principle they violate — and scores code-mass exposure. Use for an architecture assessment, boundary review, or modularity audit; supports skipping principles. Excludes build-speed and agent-workflow optimization advice.
+description: Audit an iOS codebase for modular architecture health. Runs a deterministic structure scan, then evaluates eight principles with a dedicated evaluator each — routing structural problems (monolithic targets, contamination hubs, mixed concerns, parallel abstractions, tangled graphs) to the principle they violate — and scores each principle as the severity-weighted share of modules that own or import its defects, headlined by the worst principle. Use for an architecture assessment, boundary review, or modularity audit; supports skipping principles. Excludes build-speed and agent-workflow optimization advice.
 license: MIT
 compatibility: Requires repository read and shell access, Python 3.10+, and Pygments for highlighted diffs. Independent evaluations require subagents. Browser tooling is optional.
 metadata:
