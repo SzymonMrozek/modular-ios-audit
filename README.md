@@ -70,6 +70,14 @@ The agent runs the structure scan, checks its module discovery against the actua
 
 The audit does not change application code. It distinguishes inspected facts, structural risks, suggestions, unknown checks and unverified proposed code.
 
+### Interpreting the results
+
+Treat the audit as input to engineering judgment, not a final verdict. Risk scores try to highlight the potential importance and reach of architectural problems. They are not an objective grade for your codebase; the engineer makes the actual assessment.
+
+The skill may flag something you consider unimportant for your project, and that is completely fine. Mark a finding **Invalid for this repo** if it does not apply to your context, or **Acceptable for this project** if it describes a real issue you consider a reasonable tradeoff. You decide which findings deserve action.
+
+LLM-based audits can vary between runs. A fresh audit may uncover another high-scoring problem even after you fixed the previous findings. Two or three passes, with consistent fixes between them, can often bring the reported risk down to low. That is a practical expectation, not a guarantee: use repeated audits to improve the architecture, and keep the score in perspective.
+
 ## Report
 
 - **Risk %** per principle = severity-weighted share of modules that own or import its open defects; the headline is the worst principle ("Risk 33.8% · worst principle P1") with a **LOW / MEDIUM / HIGH** band and the modules involved across all principles as a count; no overall pass/fail gate.
