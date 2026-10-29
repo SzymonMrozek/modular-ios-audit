@@ -12,7 +12,9 @@ import os
 from pathlib import Path
 import re
 
-POLICY = 'structure-scan-v2'
+from history_scan import history
+
+POLICY = 'structure-scan-v3'
 SOURCE_SUFFIXES = {'.swift', '.m', '.mm'}
 VENDOR_DIRS = {'.git', '.build', 'Pods', 'Carthage', 'DerivedData', 'Derived', 'SourcePackages', 'checkouts',
                'node_modules', 'vendor', 'Vendor', 'ThirdParty', 'third_party', '.swiftpm', 'Tuist', 'fastlane', 'build'}
@@ -398,7 +400,7 @@ def generic_role(name):
     return None
 
 
-def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
+def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=(), history_days=None):
     root = Path(root).resolve()
     files = dict(walk_sources(root, include_tests, excludes, (mapping or {}).get('include_files')))
     extensions = extension_dirs(root, excludes)
@@ -509,6 +511,17 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
         reached = {unit_module[d] for u in members[m] for d in unit_dependents[u]} - {m} - hosts
         library_reach[m] = sum(mass[d] for d in reached) / library_mass
         module_rows[m]['library_dependents_mass_share'] = round(library_reach[m], 4)
+    change_history = None
+    if history_days:
+        groups = {}
+        for m in ids:
+            if len(per[m]['files']) >= 6:
+                _, gmass, _ = groups_within([(rel, parsed[rel]['loc']) for rel in per[m]['files']])
+                total = sum(gmass.values()) or 1
+                major = [g for g, v in gmass.items() if v / total >= .02 and not g.endswith('(files)')]
+                if len(major) >= 3:
+                    groups[m] = major
+        change_history = history(root, {m: per[m]['files'] for m in ids}, consumers, hosts, groups, history_days)
     candidates = []
 
     def add(archetype, modules_, metrics, severity, trigger):
@@ -624,6 +637,10 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
             'minority_mass_share': round(minority_mass, 3), 'touched_mass_share': round(sum(mass[m] for m in touched), 3)}, severity,
             f'{concern}: ' + ', '.join(filter(None, [f'{len(competing)} competing libraries ({", ".join(sorted(competing))})' if vendor_parallel else '',
                                                        f'{len(mechanisms)} generic mechanisms in {len(owners)} module(s)' if protocol_parallel else ''])))
+    if change_history and change_history['available']:
+        for c in candidates:
+            if c['principle'] == 'P1':
+                c['metrics']['history'] = {m: change_history['modules'][m] for m in c['modules']}
     order = {'high': 0, 'medium': 1, 'low': 2}
     candidates.sort(key=lambda c: (order[c['severity_floor']], -sum(mass.get(m, 0) for m in c['modules'])))
     top = sorted(ids, key=lambda m: -mass[m])
@@ -637,7 +654,7 @@ def scan(root, mapping=None, app_dirs=(), include_tests=False, excludes=()):
                            'cycles': len(cycles), 'unowned_share': round(sum(mass[m] for m in ids if module_rows[m]['kind'] in ('unowned', 'app')), 4)},
             'modules': module_rows, 'consumers': consumers, 'module_weights': {m: per[m]['loc'] for m in ids},
             'consumer_graph_provenance': {'source': f'{POLICY} regex import scan of first-party sources', 'tests_included': include_tests},
-            'candidates': candidates}
+            'candidates': candidates, **({'history': change_history} if change_history else {})}
 
 
 if __name__ == '__main__':
@@ -647,10 +664,13 @@ if __name__ == '__main__':
     parser.add_argument('--app', action='append', default=[], help='Directory of an app/extension target for unowned code')
     parser.add_argument('--exclude', action='append', default=[], help='Repository-relative path prefix to skip')
     parser.add_argument('--include-tests', action='store_true')
+    parser.add_argument('--history-days', type=int, default=365, help='Change-history window ending at the audited commit')
+    parser.add_argument('--no-history', action='store_true', help='Skip the git change-history facts')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     mapping = json.loads(args.map.read_text(encoding='utf-8')) if args.map else None
-    result = json.dumps(scan(args.root, mapping, args.app, args.include_tests, args.exclude), indent=2) + '\n'
+    days = None if args.no_history else args.history_days
+    result = json.dumps(scan(args.root, mapping, args.app, args.include_tests, args.exclude, days), indent=2) + '\n'
     if args.output:
         args.output.write_text(result, encoding='utf-8')
     else:

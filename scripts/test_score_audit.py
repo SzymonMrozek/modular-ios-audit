@@ -184,6 +184,27 @@ class AuditTests(unittest.TestCase):
         d['structural']['resolutions']['C-hub-1']['finding'] = 'unit-contract'
         with self.assertRaisesRegex(ValueError, 'P1 finding'): score(d)
 
+    def test_change_history_sets_a_p1_floor(self):
+        d = principle(sample(pid='P2'), 'P1', [finding('p1-umbrella', ['Modules/M0'], 'medium')])
+        basis = '37 change sets edited it with 2+ importers; 40 of 49 library importers co-changed; 11 fixes edited it with an importer'
+        d['structure'] = {'history': {'available': True, 'change_sets': 287, 'fixes': 46, 'modules': {
+            'Modules/M0': {'changes': 54, 'coordinated': 37, 'p1_floor': 'high', 'p1_floor_basis': basis}}}}
+        with self.assertRaisesRegex(ValueError, 'change-history severity floor'): score(d)
+        # Only P1 findings meet the history floor: the low P2 finding on the same module stays valid.
+        self.assertIsNone(score({**d, 'principles': d['principles'][:1]})['principles'][0]['findings'][0]['history_floor'])
+        d['principles'][1]['findings'][0]['floor_override_reason'] = 'Co-changes are feature work in its own screens, not the bundled clusters'
+        s = score(d)
+        row = s['principles'][1]['findings'][0]
+        self.assertEqual((row['history_floor'], row['history_basis']), ('high', {'Modules/M0': basis}))
+        self.assertEqual(s['history']['change_sets'], 287)
+        low = copy.deepcopy(d)
+        low['principles'][1]['findings'][0].update(severity='low')
+        del low['principles'][1]['findings'][0]['floor_override_reason']
+        self.assertEqual(score(low)['principles'][1]['findings'][0]['severity'], 'low')
+        d['structure']['history']['available'] = False
+        del d['principles'][1]['findings'][0]['floor_override_reason']
+        self.assertIsNone(score(d)['principles'][1]['findings'][0]['history_floor'])
+
     def test_implementation_only_defect_exposes_its_owner_only(self):
         d = sample(severity='high', affected=30); d['principles'][0]['findings'][0]['implementation_only'] = True
         s = score(d); self.assertAlmostEqual(s['risk']['score'], 1 / 100); self.assertEqual(s['principles'][0]['affectedModules'], 0)

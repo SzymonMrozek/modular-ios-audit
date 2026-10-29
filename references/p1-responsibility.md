@@ -39,6 +39,15 @@ Record the per-resource usage table (resource → consumers) in the finding. Rep
 
 The structure scan ([structure-scan.md](structure-scan.md)) flags monolithic modules, contamination hubs and mixed concerns as P1 candidates. Confirm each as a P1 finding (`candidate_ids`, `archetype`) at or above its severity floor, or dismiss it with counterevidence.
 
+## Change history
+
+When the scan's `history` is available, read the root module's row before choosing severity and cite its counts in `severity_reason`, e.g. "changed in 54 of 287 change sets; 37 also edited 2+ importers; 40 of 49 importers co-changed; 11 fix change sets edited it with an importer".
+
+- A medium P1 issue rooted at a module with `p1_floor: high` must be high, unless `floor_override_reason` shows the history does not come from this defect (the co-changes are one feature's own screens, a finished migration, a sweep the heuristic missed). The scorer enforces it like a structural floor.
+- A low P1 issue keeps its grade: low means nothing forces importers' code to change (a resource bundle gains an asset in the same change as the screen that uses it). If the history contradicts that, re-check the mechanism and raise the grade only with code evidence.
+- For an umbrella or monolith, run the cluster helper ([structure-scan.md](structure-scan.md#change-history)) on the clusters you identified and record its counts under the finding: most change sets touching a single cluster, and pairs that never changed together, show independent reasons to change. Clusters that always change together are evidence for the shared-invariant or one-feature test.
+- History weighs a finding; it is never one. A busy module that passes the cohesion test has no P1 issue, and a dormant one that fails it keeps its finding. A root with almost no changes in a full window may support `floor_override_reason` for a structural floor; say so with its counts.
+
 ## Explain the consequence
 
 Name an independent change and trace the affected graph:
@@ -73,6 +82,6 @@ The inverse also violates P1: one owned decision spread across modules that each
 
 - **medium** (default): a module exports independent clusters that consumers use separately, so a change in one reaches consumers of the others.
 - **low**: independent clusters that, today, every consumer imports together, a single small stray component, or a resource-only module (no code beyond resource accessors, no dependencies) that bundles single-owner resources with shared ones. A changed image still reaches every importer, so keep `exposure: importers`, but nothing it drags in forces code changes.
-- **high**: the bundle is a contamination hub or monolith at or above the scan's floor, or it forces broad coordinated change (e.g. most of the codebase imports it and it drags dependencies or layers along).
+- **high**: the bundle is a contamination hub or monolith at or above the scan's floor, or it forces broad coordinated change (e.g. most of the codebase imports it and it drags dependencies or layers along), including a medium finding whose change history shows it (`p1_floor: high`).
 
 Finding threshold: establish the clusters, show that the cohesion test fails for them, and trace one independent change through the graph. Size, type count, multiple layers or private helpers alone are not evidence, but neither are a broad label, shared styling or "it has always been one module" a reason to keep independent components together.
