@@ -78,6 +78,48 @@ class HistoryScanTests(unittest.TestCase):
         core = history(root, {'Modules/Utilities/Core': ['Modules/Utilities/Core/Sources/Core.swift']}, {})['modules']['Modules/Utilities/Core']
         self.assertEqual((core['changes'], core['fixes']), (4, 1))
 
+    def test_split_module_does_not_inherit_its_source_history(self):
+        root = repo(self)
+        commit(root, 'feat: kit', ['Kit/Sources/Components/Button.swift', 'Kit/Sources/Components/Card.swift'])
+        commit(root, 'fix: button', ['Kit/Sources/Components/Button.swift'])
+        Path(root, 'UI').mkdir()
+        git(root, 'mv', 'Kit', 'UI/Kit')
+        git(root, 'commit', '-q', '-m', 'refactor: group modules')
+        Path(root, 'UI/Button/Sources').mkdir(parents=True)
+        git(root, 'mv', 'UI/Kit/Sources/Components/Button.swift', 'UI/Button/Sources/Button.swift')
+        git(root, 'commit', '-q', '-m', 'refactor: split button')
+        commit(root, 'feat: button style', ['UI/Button/Sources/Button.swift'])
+        result = history(root, {'UI/Kit': ['UI/Kit/Sources/Components/Card.swift'],
+                                'UI/Button': ['UI/Button/Sources/Button.swift']}, {})['modules']
+        self.assertEqual((result['UI/Button']['changes'], result['UI/Button']['fixes']), (2, 0))
+        self.assertEqual((result['UI/Kit']['changes'], result['UI/Kit']['fixes']), (3, 1))
+
+    def test_module_move_survives_a_stray_file_paired_with_another_module(self):
+        root = repo(self)
+        commit(root, 'feat: kit', [f'Kit/Sources/File{i}.swift' for i in range(9)] + ['Kit/config.yml'])
+        commit(root, 'fix: kit', ['Kit/Sources/File0.swift'])
+        Path(root, 'UI/Other').mkdir(parents=True)
+        git(root, 'mv', 'Kit', 'UI/Kit')
+        git(root, 'mv', 'UI/Kit/config.yml', 'UI/Other/config.yml')
+        git(root, 'commit', '-q', '-m', 'refactor: group modules')
+        result = history(root, {'UI/Kit': ['UI/Kit/Sources/File0.swift'], 'UI/Other': ['UI/Other/Sources/Other.swift']}, {})
+        self.assertEqual((result['modules']['UI/Kit']['changes'], result['modules']['UI/Kit']['fixes']), (3, 1))
+
+    def test_dissolved_module_leaves_its_history_with_no_part(self):
+        root = repo(self)
+        commit(root, 'feat: kit', [f'Kit/Resources/Image{i}.png' for i in range(5)] + ['Kit/Sources/Components/Button.swift',
+                                                                                        'Kit/Sources/Components/Card.swift'])
+        commit(root, 'fix: images', ['Kit/Resources/Image0.png'])
+        for module in ['Assets', 'Button/Sources', 'Card/Sources']:
+            Path(root, module).mkdir(parents=True)
+        git(root, 'mv', 'Kit/Resources', 'Assets/Resources')
+        git(root, 'mv', 'Kit/Sources/Components/Button.swift', 'Button/Sources/Button.swift')
+        git(root, 'mv', 'Kit/Sources/Components/Card.swift', 'Card/Sources/Card.swift')
+        git(root, 'commit', '-q', '-m', 'refactor: split kit')
+        result = history(root, {'Assets': ['Assets/Resources/Image0.png'], 'Button': ['Button/Sources/Button.swift'],
+                                'Card': ['Card/Sources/Card.swift']}, {})['modules']
+        self.assertEqual([result[m]['changes'] for m in ['Assets', 'Button', 'Card']], [1, 1, 1])
+
     def test_broad_coordinated_change_sets_a_high_p1_floor(self):
         root = repo(self)
         importers = [f'Feature{i}' for i in range(12)]

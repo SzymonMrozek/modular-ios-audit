@@ -41,7 +41,7 @@ With at least 50 change sets in the window, history supports a **high** P1 floor
 
 Co-change with a few importers is ordinary feature work, so history never sets a medium or low floor, never lowers one, and lifts only medium P1 findings: a low finding forces no code change by definition.
 
-Renames and moves are followed back through the window, so a module whose folder moved keeps its history. A module split out of a larger one inherits the larger module's history for its files; read its co-change counts from before the split with that in mind. History creates no candidates: it only weighs a P1 finding an evaluator has confirmed from the code. P1 candidates carry their modules' history rows in `metrics.history`.
+Renames inside a module and moves of a whole module are followed back through the window, so a module whose folder moved keeps its history. A move counts as whole when the old folder is gone and at least 90% of the files leaving it kept their place inside one module. Files split out of a module that lives on, or out of one dissolved into several, are not followed: their earlier changes stay with the folder they came from, so a new module's history starts at the split. History creates no candidates: it only weighs a P1 finding an evaluator has confirmed from the code. P1 candidates carry their modules' history rows in `metrics.history`.
 
 For an umbrella or monolith finding, count how its evaluated clusters change with the cluster helper:
 

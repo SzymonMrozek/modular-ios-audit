@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import fnmatch
 from itertools import combinations
 import json
+import posixpath
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
@@ -38,36 +39,87 @@ def is_fix(subject, body):
     return bool(FIX.search(subject) or title and FIX.search(title))
 
 
-def change_sets(root, days):
+def change_sets(root, days, roots=()):
     """First-parent change sets in the window ending at HEAD's commit date: (sha, is_fix, paths). Paths are reported
-    at their audited location: walking from newest to oldest, a file renamed or moved later keeps counting for the
-    module that owns it now, so a folder restructure does not erase a module's history."""
+    at their audited location: walking from newest to oldest, a file renamed inside its module, or moved with its whole
+    module, keeps counting for the module that owns it now, so a folder restructure does not erase a module's history.
+    With the modules' current `roots`, a file moved out of a module that lives on, or that split into several, is not
+    followed: changes before the split stay with the folder it came from, so a new module does not inherit them."""
     head = git(root, 'log', '-1', '--format=%cI').strip()
     if not head:
         return None, []
-    end = datetime.fromisoformat(head)
+    # Python 3.10 parses only numeric offsets, and git writes UTC as `Z`.
+    end = datetime.fromisoformat(head.replace('Z', '+00:00'))
     since = end - timedelta(days=days)
     out = git(root, 'log', '--first-parent', '--diff-merges=first-parent', '--relative', '--name-status', '-M', '-z',
               f'--since={since.isoformat()}', f'--format={SEPARATOR}%H%x00%s%x00%b%x00', '--', '.')
     sets, current = [], {}
+    # A module root as it was named at the commit being read, mapped to where that module lives now.
+    aliases = {r: r for r in roots}
+
+    def root_of(path):
+        return max((d for d in aliases if path.startswith(d + '/')), key=len, default=None)
+
+    def source_of(old, new, target):
+        rel = new[len(target) + 1:]
+        return old[:-len(rel) - 1] if old.endswith('/' + rel) else None
+
+    def moved(path):
+        if path in current:
+            return current[path]
+        d = root_of(path)
+        return aliases[d] + path[len(d):] if d else path
+
     for record in out.split(SEPARATOR)[1:]:
         sha, subject, body, *fields = record.split('\x00')
         fields = [f.strip('\n') for f in fields if f.strip('\n')]
-        paths, i = [], 0
+        entries, i = [], 0
         while i < len(fields):
-            status = fields[i]
-            if status[:1] in 'RC':
-                old, new = fields[i + 1], fields[i + 2]
-                now = current.get(new, new)
-                if status[0] == 'R':
-                    current[old] = now
-                paths.append(now)
+            if fields[i][:1] in 'RC':
+                entries.append((fields[i][0], fields[i + 1], fields[i + 2]))
                 i += 3
             else:
-                paths.append(current.get(fields[i + 1], fields[i + 1]))
+                entries.append((fields[i][0], None, fields[i + 1]))
                 i += 2
+        # A rename leaving a module root keeps the module's history only when the whole module moved: the file keeps
+        # its place inside the module, the source folder is gone, and nearly all files leaving it went there unchanged
+        # (git can pair a stray identical file, such as a shared config, with another module).
+        sources = defaultdict(Counter)
+        for status, old, new in entries:
+            target = status == 'R' and root_of(new)
+            if target and not old.startswith(target + '/'):
+                sources[source_of(old, new, target)][target] += 1
+        moves = {}
+        for source, targets in sources.items():
+            if not source:
+                continue
+            target, count = targets.most_common(1)[0]
+            leaving = sum(status == 'R' and old.startswith(source + '/') for status, old, _ in entries)
+            if 10 * count >= 9 * leaving and not git(root, 'ls-tree', '--name-only', sha, '--', source).strip():
+                moves[source] = target
+                aliases[source] = aliases[target]
+        paths = []
+        for status, old, new in entries:
+            now = moved(new)
+            if status == 'R':
+                target = root_of(new)
+                follow = not target or old.startswith(target + '/') or moves.get(source_of(old, new, target)) == target
+                current[old] = now if follow else moved(old)
+            paths.append(now)
         sets.append((sha, is_fix(subject, body), paths))
     return {'end': end.isoformat(), 'since': since.isoformat(), 'days': days, 'head': git(root, 'rev-parse', 'HEAD').strip()}, sets
+
+
+def module_roots(module_files):
+    """Each module's own folder: the shallowest folder above all its files that holds no other module's files."""
+    claims = Counter(str(d) for files in module_files.values() for d in {p for f in files for p in PurePosixPath(f).parents})
+    roots = set()
+    for files in module_files.values():
+        if files:
+            common = PurePosixPath(posixpath.commonpath([posixpath.dirname(f) or '.' for f in files]))
+            root = next((str(d) for d in reversed([common, *common.parents]) if str(d) != '.' and claims[str(d)] == 1), None)
+            roots.add(root)
+    return roots - {None}
 
 
 def path_owner(module_files):
@@ -117,7 +169,7 @@ def history(root, module_files, consumers, hosts=(), groups=None, days=365):
     """Per-module change facts over the window. `groups` maps a module to its major folder groups; `hosts` never count
     as co-changed importers, because app targets wire every change by design."""
     try:
-        window, sets = change_sets(root, days)
+        window, sets = change_sets(root, days, module_roots(module_files))
     except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
         return {'policy': POLICY, 'available': False, 'reason': 'not a git checkout, or git is unavailable'}
     if window is None:
