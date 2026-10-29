@@ -82,6 +82,7 @@ LLM-based audits can vary between runs. A fresh audit may uncover another high-s
 
 - **Risk %** per principle = severity-weighted share of modules that own or import its open defects; the headline is the worst principle ("Risk 33.8% · worst principle P1") with a **LOW / MEDIUM / HIGH** band and the modules involved across all principles as a count; no overall pass/fail gate.
 - A deterministic structure scan first. It routes monolithic targets, contamination hubs and mixed concerns to P1, parallel abstractions to P5 and tangled graphs to P7; every candidate is confirmed or dismissed before a score is shown.
+- Git change history backs P1 severity: over the year before the audited commit, how often each module changed, how many of those changes were fixes, and how often they also edited its importers. A medium P1 finding on a module with broad co-change with its importers, or on a monolith most changes go through, must be high unless its evaluator shows that history comes from something else.
 - Top problems ranked by risk, each with its defect modules and involved modules.
 - Individual principle scores, consequence weighting, coverage and check evidence.
 - Compact narrow low/medium findings (≤2 modules, below 2%), readable principle pages and direct issue/fix/evidence links.

@@ -5,7 +5,7 @@ The scan ([structure_scan.py](../scripts/structure_scan.py)) supplies determinis
 ## Run it
 
 ```sh
-python3 scripts/structure_scan.py <repo> --output structure.json [--map module-map.json] [--app <dir>] [--exclude <prefix>]
+python3 scripts/structure_scan.py <repo> --output structure.json [--map module-map.json] [--app <dir>] [--exclude <prefix>] [--history-days 365 | --no-history]
 ```
 
 Discovery maps imported module names to directories (`Name/`, `Name/Sources`, `Module/Interface` → `ModuleInterface`) and collapses Interface/Implementation/Proto/Testing targets under their owner. Code no module claims falls to its top-level directory; directories with `@main`/`UIApplicationMain` become `app`. Tests, manifests, generated code and vendored directories are skipped.
@@ -23,6 +23,34 @@ Discovery is a heuristic. Compare it with the real build manifests (Tuist, Xcode
 The scan cannot read `.xcodeproj` targets or Bazel rules itself. For Xcode projects, list each target's source folders and synchronized groups from the project. For Bazel, use `bazel query` when it is available, or read the `BUILD` files' `srcs` and `deps` declaratively; never execute repository files to evaluate them. Keep both runs in the output folder. Freeze the scan's module IDs as the inventory and copy `consumers`, `consumer_graph_provenance` and `module_weights` into audit data; keep the full scan under `structure` and its candidates under `structural.candidates`.
 
 Reach is computed on the **target** graph and projected to logical modules: consumers that import only `FeatureInterface` do not inherit `FeatureImplementation`'s dependencies. Hosts (`app`, `composition`, `unowned`) depend on everything by design, so hub reach counts library code only.
+
+## Change history
+
+In a git checkout the scan adds `history`: facts about how each module actually changed during the `--history-days` (default 365) window ending at the audited commit's date, so a rerun at the same ref gives the same counts. `--no-history` skips it; outside git it reports `available: false` with a reason.
+
+- **Change set**: one first-parent commit with its merge diff, so a squash-merged request and a merged branch each count once. Paths map to the module owning their nearest current folder, so tests, resources, manifests and deleted files inside a module's folders count as changes to it.
+- **Fix**: a conventional `fix`/`bugfix`/`hotfix` type, a fix branch in a merge subject, bug/crash/regression/fix words or a revert. It is a commit-message heuristic: report it as "fix change sets", never as defects or incidents.
+- **Sweep**: a change set touching more than a quarter of the modules (at least 10) is a rename, format or toolchain bump; it is counted in `sweeps_excluded` and nowhere else.
+
+Per module: `changes`, `fixes`, `with_consumers` (change sets that also edited a direct library importer), `fixes_with_consumers`, `coordinated` (edited with 2+ library importers), `library_consumers`, `consumers_co_changed` (distinct importers ever edited with it), and for modules with three or more major folder groups `group_changes`/`single_group_changes`. Hosts (app, composition) never count as co-changed importers, because they wire every change by design.
+
+With at least 50 change sets in the window, history supports a **high** P1 floor (`p1_floor`, `p1_floor_basis`) when it shows the high anchor's "broad coordinated change":
+
+- **Importer coupling**: 10+ coordinated change sets, and 10+ library importers co-changed, or 10+ fix change sets edited it with an importer and 5+ importers co-changed.
+- **Monolith traffic**: at least half of all change sets went through the module, and at least 60% of its 20+ folder-touching change sets stayed inside one folder group — independent work queued through one target.
+
+Co-change with a few importers is ordinary feature work, so history never sets a medium or low floor, never lowers one, and lifts only medium P1 findings: a low finding forces no code change by definition.
+
+Renames inside a module and moves of a whole module are followed back through the window, so a module whose folder moved keeps its history. A move counts as whole when the old folder is gone and at least 90% of the files leaving it kept their place inside one module. Files split out of a module that lives on, or out of one dissolved into several, are not followed: their earlier changes stay with the folder they came from, so a new module's history starts at the split. History creates no candidates: it only weighs a P1 finding an evaluator has confirmed from the code. P1 candidates carry their modules' history rows in `metrics.history`.
+
+For an umbrella or monolith finding, count how its evaluated clusters change with the cluster helper:
+
+```sh
+python3 scripts/history_scan.py <repo> --clusters clusters.json --output cluster-history.json
+# clusters.json: {"module": "Modules/UI", "clusters": {"Button": ["Modules/UI/Sources/Button*.swift"], "Card": ["…"]}}
+```
+
+It reports change sets per cluster, how many touched exactly one cluster, and which pairs ever changed together: direct evidence for the cohesion test's "independent clusters".
 
 ## Candidates by owning principle
 

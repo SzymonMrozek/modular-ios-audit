@@ -33,6 +33,8 @@ Severity follows consequence, never popularity. Use the anchor that matches the 
 
 Findings that confirm a structural candidate must meet its `severity_floor` unless `floor_override_reason` records verified counterevidence. That floor is what keeps the same repository from scoring differently between runs.
 
+A **medium** P1 issue rooted at a module whose change history shows broad coordinated change (`structure.history.modules[m].p1_floor`, see [structure-scan.md](structure-scan.md#change-history)) meets that **history floor** the same way. History only raises medium to high, never a low finding, which by definition forces no code change; the score stays the severity-weighted module share, so every number is still recomputable from module counts. The scorer returns `history_floor` and `history_basis` (the counts) per finding and the window's change-set totals under `history`.
+
 ## Exposure and risk
 
 `rootCostModuleIDs` are evidenced defect owners. Owners always count: a defect in a leaf or app target still exposes that target's code. Who else a defect reaches is set per finding with `exposure`:

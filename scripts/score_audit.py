@@ -137,6 +137,11 @@ def score(data):
             if r.get('status') not in ('confirmed', 'dismissed'):
                 raise ValueError('Structural resolution must be confirmed or dismissed: ' + cid)
     skipped = {p['id'] for p in data['principles'] if p.get('skipped')}
+    # Change history backs P1 severity with observed counts: a medium P1 issue rooted where history shows broad
+    # coordinated change meets that floor, exactly like a structural candidate's floor. A low issue forces no code
+    # change by definition, so history never lifts it two steps; its evaluator re-checks the grade instead.
+    change_history = (data.get('structure') or {}).get('history') or {}
+    history_rows = change_history.get('modules', {}) if change_history.get('available') else {}
     in_review = {cid for cid, c in candidates.items() if c['principle'] not in skipped}
 
     results, seen, records, all_open, all_observed = [], set(), {}, [], []
@@ -188,6 +193,10 @@ def score(data):
             floor = max((candidates[c]['severity_floor'] for c in linked), key=RANK.get, default=None)
             if floor and RANK[f['severity']] < RANK[floor] and not str(f.get('floor_override_reason', '')).strip():
                 raise ValueError(f'Finding {fid} is below its structural severity floor ({floor}) without floor_override_reason')
+            history = {m: history_rows[m] for m in roots if pid == 'P1' and kind == 'issue' and history_rows.get(m, {}).get('p1_floor')}
+            history_floor = max((row['p1_floor'] for row in history.values()), key=RANK.get, default=None)
+            if history_floor and RANK['medium'] <= RANK[severity(f, pid)] < RANK[history_floor] and not str(f.get('floor_override_reason', '')).strip():
+                raise ValueError(f'Finding {fid} is below its change-history severity floor ({history_floor}) without floor_override_reason')
             decision = decisions.get(fid, {'status': 'open'})
             in_scope = bool(set(roots) & eligible) or not roots and bool(f['external_scopes'])
             if kind == 'issue':
@@ -205,6 +214,7 @@ def score(data):
             presentation = 'suggestion' if kind == 'suggestion' else 'tiny' if tiny else 'issue'
             rows.append({'id': fid, 'kind': kind, 'presentation': presentation, 'severity': own_severity, 'severity_reason': f['severity_reason'],
                          'structural': bool(linked), 'archetype': f.get('archetype'), 'candidate_ids': linked, 'severity_floor': floor,
+                         'history_floor': history_floor, 'history_basis': {m: row['p1_floor_basis'] for m, row in history.items()},
                          'exposure': exposure_mode(f), 'decision': decision, 'in_scope': in_scope, 'active': active,
                          'observed': metrics([f] if in_scope and kind == 'issue' else [], external),
                          'consequence_weight': UNITS[own_severity] / 10 if kind == 'issue' else 0,
@@ -316,6 +326,7 @@ def score(data):
                            'dismissed': sorted(c for c, r in resolutions.items() if r['status'] == 'dismissed'),
                            'skipped': sorted(set(candidates) - in_review)},
             'structure': structure.get('repository'),
+            'history': {k: change_history[k] for k in ('available', 'reason', 'window', 'change_sets', 'fixes', 'sweeps_excluded') if k in change_history} or None,
             'consumer_graph_provenance': data.get('consumer_graph_provenance'), 'principles': results}
 
 

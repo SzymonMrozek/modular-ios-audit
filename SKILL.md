@@ -4,7 +4,7 @@ description: Audit an iOS codebase for modular architecture health. Runs a deter
 license: MIT
 compatibility: Requires repository read and shell access, Python 3.10+, and Pygments for highlighted diffs. Independent evaluations require subagents. Browser tooling is optional.
 metadata:
-  version: "0.3.1"
+  version: "0.4.0"
 ---
 
 # Modular iOS audit
@@ -38,7 +38,7 @@ Interpret selections by ID or name: “P1, P3”, “skip P5 and P8”, or equiv
 
 ## Prepare shared facts
 
-Start with the deterministic structure scan: `python3 scripts/structure_scan.py <repo> --output structure.json` (see [structure-scan.md](references/structure-scan.md)). Check its module discovery against the real build system; when it disagrees, write a module map from the resolved manifests and rerun. Its module IDs and direct consumer graph become the frozen inventory and graph; its per-module code size is a fact, not a score weight. Its repository metrics (code concentration, effective modules, propagation cost, cycles) and per-module metrics are shared facts; each candidate names its owning principle (P1, P5 or P7) and goes only to that evaluator.
+Start with the deterministic structure scan: `python3 scripts/structure_scan.py <repo> --output structure.json` (see [structure-scan.md](references/structure-scan.md)). Check its module discovery against the real build system; when it disagrees, write a module map from the resolved manifests and rerun. Its module IDs and direct consumer graph become the frozen inventory and graph; its per-module code size is a fact, not a score weight. Its repository metrics (code concentration, effective modules, propagation cost, cycles) and per-module metrics are shared facts; each candidate names its owning principle (P1, P5 or P7) and goes only to that evaluator. In a git checkout it also records each module's change history over the year ending at the audited commit (changes, fixes, change sets that edited it with its importers, single-folder changes) and the P1 severity floor that history supports; see [structure-scan.md](references/structure-scan.md#change-history).
 
 Inspect the repository’s actual module/build system, ownership, public contracts, feature/service invocation paths, composition roots and relevant instructions. Map declared dependencies, standalone versus split modules, source/resource/test membership and validation entry points. Follow data/state ownership and platform/vendor boundaries where relevant. Distinguish authored from generated/vendor code. Include tests as evidence of contracts and consumption; do not assume a particular UI, concurrency, DI or project-generation framework.
 
